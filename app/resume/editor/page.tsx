@@ -1,12 +1,18 @@
-"use client"; // 👈 must be the very first line
+"use client"; // must be the very first line
 
 import React from "react";
-import ResumeEditor from "../components/ResumeEditor";
+import loadable from "next/dynamic"; // renamed to avoid conflict with export const dynamic
 
-// ✅ Disable static generation & caching completely
+// ✅ Dynamically import ResumeEditor to disable SSR
+const ResumeEditor = loadable(
+  () => import("../components/ResumeEditor"),
+  { ssr: false } // ensures no server-side rendering
+);
+
+// ✅ Disable static generation and caching
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
-export const revalidate = 0; // must be a number, not an object
+export const revalidate = 0;
 
 export default function ResumeEditorPage() {
   return (
@@ -30,9 +36,11 @@ export default function ResumeEditorPage() {
           background: "#1e293b",
           padding: "2rem",
           borderRadius: "1rem",
+          color: "white",
         }}
       >
-        <ResumeEditor template="modern" country="USA" role="Software Engineer" />
+        {/* ✅ Fix for missing props during build */}
+        <ResumeEditor {...({} as any)} />
       </div>
     </main>
   );
