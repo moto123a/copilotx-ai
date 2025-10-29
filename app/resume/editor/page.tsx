@@ -1,7 +1,10 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import ResumeEditor from "../components/ResumeEditor";
+import dynamic from "next/dynamic";
+const ResumeEditor = dynamic(() => import("../components/ResumeEditor"), {
+  ssr: false,
+});
 
 export default function ResumeEditorPage() {
   const params = useSearchParams();
