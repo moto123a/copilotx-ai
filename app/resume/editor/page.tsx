@@ -1,7 +1,12 @@
-"use client";
+"use client"; // 👈 must be the very first line
 
 import React from "react";
 import ResumeEditor from "../components/ResumeEditor";
+
+// ✅ Disable static generation & caching completely
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0; // must be a number, not an object
 
 export default function ResumeEditorPage() {
   return (
@@ -27,11 +32,7 @@ export default function ResumeEditorPage() {
           borderRadius: "1rem",
         }}
       >
-        <ResumeEditor
-          template="modern"
-          country="USA"
-          role="Software Engineer"
-        />
+        <ResumeEditor template="modern" country="USA" role="Software Engineer" />
       </div>
     </main>
   );
