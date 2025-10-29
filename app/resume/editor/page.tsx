@@ -3,21 +3,30 @@
 import dynamic from "next/dynamic";
 import React from "react";
 
-// ✅ Adjust this path based on where ResumeEditor.tsx actually lives
+// ✅ Adjust path if your component lives elsewhere
 const ResumeEditor = dynamic(() => import("@/components/resume/ResumeEditor"), {
   ssr: false,
-  loading: () => <p className="text-gray-400 text-center">Loading editor...</p>,
+  loading: () => <p style={{ color: "#999", textAlign: "center" }}>Loading editor...</p>,
 });
 
 export default function ResumeEditorPage() {
+  if (typeof window === "undefined") return null; // 🚫 avoid SSR on Vercel
   return (
-    <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center">
-      <h1 className="text-3xl font-semibold mb-6 text-center">
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "#0f172a",
+        color: "white",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <h1 style={{ fontSize: "2rem", marginBottom: "1.5rem" }}>
         CopilotX Resume Editor
       </h1>
-
-      <div className="w-full max-w-6xl bg-gray-900 p-6 rounded-xl shadow-lg">
-        {/* 🔹 Disable SSR completely for ResumeEditor */}
+      <div style={{ width: "100%", maxWidth: "1100px", background: "#1e293b", padding: "2rem", borderRadius: "1rem" }}>
         <ResumeEditor template="modern" country="USA" role="Software Engineer" />
       </div>
     </main>
