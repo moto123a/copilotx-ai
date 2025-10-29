@@ -3,27 +3,26 @@
 import React from "react";
 import dynamic from "next/dynamic";
 
-// ✅ Import your component dynamically and disable SSR
+// ✅ Load ResumeEditor only on the client side
 const ResumeEditor = dynamic(() => import("../components/ResumeEditor"), {
-  ssr: false,
+  ssr: false, // disables server-side rendering
   loading: () => <div>Loading editor...</div>,
 });
 
-// ✅ Remove ALL other exports — these are what break your build
-// ❌ Do NOT export `dynamic`, `fetchCache`, or `revalidate` here
-// They are causing the TypeScript type mismatch you see in your terminal
+// ✅ Prevent Next.js from trying to prerender this page
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default function ResumeEditorPage() {
   return (
     <main
       style={{
         display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
         justifyContent: "center",
+        alignItems: "center",
         height: "100vh",
-        background: "#0f172a",
-        color: "white",
+        background: "#0f0f0f",
+        color: "#fff",
       }}
     >
       <ResumeEditor />
