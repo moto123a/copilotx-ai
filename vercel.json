@@ -1,0 +1,12 @@
+{
+  "routes": [
+    {
+      "src": "/resume/editor",
+      "dest": "/resume/editor",
+      "methods": ["GET", "POST", "OPTIONS"],
+      "headers": { "Cache-Control": "no-store" }
+    }
+  ],
+  "outputDirectory": "out",
+  "framework": "nextjs"
+}
