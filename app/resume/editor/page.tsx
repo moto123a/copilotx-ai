@@ -1,28 +1,22 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import React from "react";
 
-// Disable SSR for ResumeEditor (so it never runs during build)
-const ResumeEditor = dynamic(() => import("../components/ResumeEditor"), {
+// ✅ Dynamically import your actual editor component (client-side only)
+const ResumeEditor = dynamic(() => import("@/components/resume/ResumeEditor"), {
   ssr: false,
+  loading: () => <p>Loading Resume Editor...</p>,
 });
 
-// ✅ Disable static generation for this route
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-export default function ResumeEditorPage() {
-  const params = useSearchParams();
-  const template = params.get("template") || "modern";
-  const country = params.get("country") || "USA";
-  const role = params.get("role") || "Software Engineer";
-
+export default function EditorPage() {
   return (
-    <main className="min-h-screen bg-[#060617] text-white flex flex-col items-center justify-center relative overflow-hidden font-sans">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,255,255,0.08),transparent_70%),radial-gradient(circle_at_80%_100%,rgba(255,0,255,0.08),transparent_80%)] blur-[120px]" />
-      <div className="relative z-10 w-full max-w-7xl p-8">
-        <ResumeEditor template={template} country={country} role={role} />
+    <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center">
+      <h1 className="text-3xl font-semibold mb-6 text-center">
+        Resume Editor
+      </h1>
+      <div className="w-full max-w-6xl bg-gray-900 p-6 rounded-lg shadow-lg">
+        <ResumeEditor />
       </div>
     </main>
   );
