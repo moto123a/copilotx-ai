@@ -25,67 +25,10 @@ export default function ResumeEditor({
   });
 
   const [step, setStep] = useState(0);
-  const [isGenerating, setIsGenerating] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const fields = Object.keys(resume);
 
-  // ✅ Local Ollama Stream (browser-only safe)
-  async function localAIStream(prompt: string, onChunk: (text: string) => void) {
-    // 🧠 Prevent running during SSR build on Vercel
-    if (typeof window === "undefined") return;
-
-    try {
-      const res = await fetch("http://127.0.0.1:11434/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "mistral", prompt, stream: true }),
-      });
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No reader");
-
-      const decoder = new TextDecoder();
-      let text = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n").filter(Boolean);
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line);
-            if (data.response) {
-              text += data.response;
-              onChunk(text);
-            }
-          } catch {
-            text += line;
-            onChunk(text);
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Ollama error:", err);
-      alert("⚠️ Make sure Ollama is running locally on http://127.0.0.1:11434");
-    }
-  }
-
-  // 💡 AI Suggest Current Step
-  const handleAISuggest = async () => {
-    const key = fields[step];
-    if (["name", "email", "phone"].includes(key)) return; // 🚫 Skip AI for these
-
-    setIsGenerating(true);
-    const prompt = `Write a professional ${key} section for a ${role} resume in ${country}. Keep it realistic, concise, and ATS-optimized.`;
-
-    await localAIStream(prompt, (liveText) =>
-      setResume((prev) => ({ ...prev, [key]: liveText }))
-    );
-
-    setIsGenerating(false);
-  };
-
-  // 🧾 Download PDF
+  // PDF Download
   const handleDownloadPDF = () => {
     if (!previewRef.current) return;
     html2pdf()
@@ -113,7 +56,6 @@ export default function ResumeEditor({
   };
 
   const currentKey = fields[step];
-  const showAISuggest = !["name", "email", "phone"].includes(currentKey);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-10 w-full">
@@ -142,18 +84,6 @@ export default function ResumeEditor({
           />
 
           <div className="flex gap-3 mb-4">
-            {showAISuggest && (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleAISuggest}
-                disabled={isGenerating}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-sm font-semibold"
-              >
-                💡 {isGenerating ? "Generating..." : "AI Suggest"}
-              </motion.button>
-            )}
-
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
