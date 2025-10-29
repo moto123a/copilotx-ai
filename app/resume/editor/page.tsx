@@ -3,10 +3,14 @@
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 
-// 🚫 Disable SSR for ResumeEditor (so it doesn't break Vercel build)
+// Disable SSR for ResumeEditor (so it never runs during build)
 const ResumeEditor = dynamic(() => import("../components/ResumeEditor"), {
   ssr: false,
 });
+
+// ✅ Disable static generation for this route
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default function ResumeEditorPage() {
   const params = useSearchParams();
@@ -18,11 +22,7 @@ export default function ResumeEditorPage() {
     <main className="min-h-screen bg-[#060617] text-white flex flex-col items-center justify-center relative overflow-hidden font-sans">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,255,255,0.08),transparent_70%),radial-gradient(circle_at_80%_100%,rgba(255,0,255,0.08),transparent_80%)] blur-[120px]" />
       <div className="relative z-10 w-full max-w-7xl p-8">
-        <ResumeEditor
-          template={template}
-          country={country}
-          role={role}
-        />
+        <ResumeEditor template={template} country={country} role={role} />
       </div>
     </main>
   );
