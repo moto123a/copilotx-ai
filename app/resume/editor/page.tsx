@@ -1,46 +1,32 @@
-"use client"; // must be the very first line
+"use client";
 
 import React from "react";
-import loadable from "next/dynamic"; // renamed to avoid conflict with export const dynamic
+import dynamic from "next/dynamic";
 
-// ✅ Dynamically import ResumeEditor to disable SSR
-const ResumeEditor = loadable(
-  () => import("../components/ResumeEditor"),
-  { ssr: false } // ensures no server-side rendering
-);
+// ✅ Dynamically import ResumeEditor — disable SSR (so it never runs on server)
+const ResumeEditor = dynamic(() => import("../../../components/ResumeEditor"), {
+  ssr: false,
+  loading: () => <div>Loading editor...</div>,
+});
 
-// ✅ Disable static generation and caching
+// ✅ Prevent Next.js pre-rendering / caching issues
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
+// ✅ Component
 export default function ResumeEditorPage() {
   return (
     <main
       style={{
         display: "flex",
         flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
         padding: "2rem",
+        minHeight: "100vh",
       }}
     >
-      <h1 style={{ fontSize: "2rem", marginBottom: "1.5rem" }}>
-        CopilotX Resume Editor
-      </h1>
-
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "1000px",
-          background: "#1e293b",
-          padding: "2rem",
-          borderRadius: "1rem",
-          color: "white",
-        }}
-      >
-        {/* ✅ Fix for missing props during build */}
-        <ResumeEditor {...({} as any)} />
+      <div>
+        <ResumeEditor />
       </div>
     </main>
   );
