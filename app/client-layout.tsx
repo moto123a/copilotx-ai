@@ -4,13 +4,24 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import { useEffect, useState } from "react";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  const hideLayout = pathname.startsWith("/resume/editor");
 
   return (
     <>
-      <Navbar />
+      {!hideLayout && <Navbar />}
+
       <AnimatePresence mode="wait">
         <motion.main
           key={pathname}
@@ -23,7 +34,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           {children}
         </motion.main>
       </AnimatePresence>
-      <Footer />
+
+      {!hideLayout && <Footer />}
     </>
   );
 }
