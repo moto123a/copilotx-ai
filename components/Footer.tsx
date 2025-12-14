@@ -151,13 +151,20 @@ export default function Footer({ isDark = true }) {
             className="flex flex-col space-y-4"
           >
             <div className="flex items-center space-x-3">
+              {/* UPDATED LOGO: Replaced 'C' text box with Image */}
               <motion.div
                 whileHover={{ rotate: 360, scale: 1.1 }}
                 transition={{ duration: 0.6 }}
-                className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/50"
+                className="w-12 h-12 relative"
               >
-                <span className="text-white font-bold text-2xl">C</span>
+                 {/* Ensure 'logo.jpeg' is in your public folder */}
+                <img 
+                  src="/logo.jpeg" 
+                  alt="CoopilotX Logo" 
+                  className="w-full h-full object-contain rounded-lg"
+                />
               </motion.div>
+              
               <span className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                 CoopilotX AI
               </span>

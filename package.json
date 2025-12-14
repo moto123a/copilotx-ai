@@ -8,6 +8,10 @@
     "start": "next start"
   },
   "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
     "autoprefixer": "^10.4.21",
     "file-saver": "^2.0.5",
     "firebase": "^12.4.0",
