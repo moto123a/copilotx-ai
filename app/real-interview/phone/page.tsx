@@ -1,10 +1,9 @@
 "use client";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+
 import Link from "next/link";
 import { useEffect } from "react";
 
-export default function PhoneInterviewPage() {
+export default function PhoneInterviewClient() {
   useEffect(() => {
     // Use tokens route as "backend health"
     const API_HEALTH = "/api/stt/tokens";
@@ -112,21 +111,18 @@ export default function PhoneInterviewPage() {
 
     let running = false;
 
-    // We store the FULL accumulator here
-    let fullTranscriptBuffer = ""; 
+    // Full accumulator
+    let fullTranscriptBuffer = "";
     let lastShown = "";
     let manualStopRequested = false;
 
-    // Helper: Makes text look professional (fix spaces before dots, capitalize)
     function formatText(s: string) {
-        if (!s) return "";
-        let clean = s
-            .replace(/\s+/g, " ") // Remove double spaces
-            .replace(/\s+([.,!?;:])/g, "$1") // Remove space before punctuation (e.g. "hello ." -> "hello.")
-            .trim();
-        
-        // Capitalize first letter
-        return clean.charAt(0).toUpperCase() + clean.slice(1);
+      if (!s) return "";
+      let clean = s
+        .replace(/\s+/g, " ")
+        .replace(/\s+([.,!?;:])/g, "$1")
+        .trim();
+      return clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : "";
     }
 
     function setTranscriptIfChanged(t: string) {
@@ -205,7 +201,6 @@ export default function PhoneInterviewPage() {
       manualStopRequested = false;
       running = true;
 
-      // Reset buffer
       fullTranscriptBuffer = "";
       lastShown = "";
 
@@ -232,7 +227,8 @@ export default function PhoneInterviewPage() {
         processor.connect(gain);
         gain.connect(audioCtx.destination);
 
-        const wsUrl = `wss://eu.rt.speechmatics.com/v2?jwt=${encodeURIComponent(jwt)}`;
+        // IMPORTANT: you said your region is us1
+        const wsUrl = `wss://us1.rt.speechmatics.com/v2?jwt=${encodeURIComponent(jwt)}`;
         smWs = new WebSocket(wsUrl);
         smWs.binaryType = "arraybuffer";
 
@@ -249,9 +245,9 @@ export default function PhoneInterviewPage() {
               },
               transcription_config: {
                 language: (langSelect?.value || "en").trim(),
-                enable_partials: true, // This allows live updates
-                max_delay: 0.7, // Lower delay for faster text
-                enable_entities: true // Helps with numbers/dates
+                enable_partials: true,
+                max_delay: 0.7,
+                enable_entities: true,
               },
             })
           );
@@ -266,26 +262,17 @@ export default function PhoneInterviewPage() {
               recognitionStarted = true;
               setSTT("STT: listening", true);
               if (statusLine) statusLine.textContent = "Listening (Speechmatics)...";
-              setTranscriptIfChanged("Listening...");
-              // Clear the "Listening..." text immediately so it doesn't stick
-              setTimeout(() => setTranscriptIfChanged(""), 500); 
+              setTranscriptIfChanged("");
               return;
             }
 
             if (msg.message === "AddTranscript") {
-              // 1. Get the new chunk of text. 
-              // Speechmatics V2 sends 'AddTranscript' as a stream of additions.
-              // We use join("") because Speechmatics includes necessary spaces in the content usually.
               const chunk = (msg.results || [])
                 .map((r: any) => r?.alternatives?.[0]?.content || "")
                 .join("");
 
               if (chunk) {
-                // 2. Append directly to our main buffer.
-                // We do not replace; we only add. This stops words from disappearing.
                 fullTranscriptBuffer += chunk;
-                
-                // 3. Update UI
                 setTranscriptIfChanged(fullTranscriptBuffer);
               }
               return;
@@ -297,9 +284,7 @@ export default function PhoneInterviewPage() {
               stopSpeechmatics(false);
               return;
             }
-          } catch {
-            // ignore
-          }
+          } catch {}
         };
 
         smWs.onerror = () => {
