@@ -22,6 +22,9 @@ import {
 // --- FILE PATHS ---
 const WINDOWS_URL = "/InterviewCopilot_Windows.zip";
 const MAC_URL = "/InterviewCopilotMac-1.0.0.pkg";
+<div style={{ position: "fixed", bottom: 10, right: 10, fontSize: 12, opacity: 0.7 }}>
+  DEPLOY VERSION: 2025-12-20-1
+</div>
 
 export default function Home() {
   const router = useRouter();
