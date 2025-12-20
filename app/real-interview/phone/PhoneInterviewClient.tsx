@@ -229,7 +229,7 @@ export default function PhoneInterviewClient() {
         gain.connect(audioCtx.destination);
 
         // IMPORTANT: you said your region is us1
-        const wsUrl = `wss://us1.rt.speechmatics.com/v2?jwt=${encodeURIComponent(jwt)}`;
+        const wsUrl = `wss://us.rt.speechmatics.com/v2?jwt=${encodeURIComponent(jwt)}`;
         smWs = new WebSocket(wsUrl);
         smWs.binaryType = "arraybuffer";
 
