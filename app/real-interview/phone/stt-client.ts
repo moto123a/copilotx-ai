@@ -1,234 +1,158 @@
-"use client";
-
-export type STTStatus =
-  | "idle"
-  | "starting"
-  | "listening"
-  | "stopped"
-  | "error";
-
-type Callbacks = {
-  onStatus?: (s: STTStatus, note?: string) => void;
-  onTranscript?: (text: string) => void;
+type StartOptions = {
+  language: string; 
+  onStatus: (s: string) => void;
+  onPartial: (text: string) => void;
+  onFinal: (text: string) => void;
+  onError: (err: string) => void;
 };
 
-export function createSpeechmaticsSTT(cb: Callbacks) {
-  const API_TOKEN = "/api/stt/tokens";
+export class SpeechmaticsClient {
+  private ws: WebSocket | null = null;
+  private audioCtx: AudioContext | null = null;
+  private stream: MediaStream | null = null;
+  private processor: ScriptProcessorNode | null = null;
+  private started = false;
 
-  let ws: WebSocket | null = null;
-  let stream: MediaStream | null = null;
-  let ctx: AudioContext | null = null;
-  let processor: ScriptProcessorNode | null = null;
-  let source: MediaStreamAudioSourceNode | null = null;
+  async start(opts: StartOptions) {
+    if (this.started) return;
+    this.started = true;
 
-  let running = false;
-  let recognitionStarted = false;
-  let finalText = "";
-  let lastShown = "";
-  let manualStop = false;
+    try {
+      opts.onStatus("Requesting Token...");
 
-  function normalize(s: string) {
-    return (s || "").replace(/\s+/g, " ").trim();
-  }
+      const tr = await fetch("/api/stt/tokens", { cache: "no-store" });
+      
+      if (!tr.ok) {
+        throw new Error(`API Error (${tr.status})`);
+      }
 
-  function emitTranscript(t: string) {
-    if (t !== lastShown) {
-      lastShown = t;
-      cb.onTranscript?.(t);
+      const data = await tr.json();
+
+      if (!data.token) {
+        throw new Error("No token received");
+      }
+
+      // Connect to Speechmatics
+      const wsUrl = `wss://eu2.rt.speechmatics.com/v2/en?jwt=${data.token}`;
+
+      opts.onStatus("Connecting...");
+
+      this.ws = new WebSocket(wsUrl);
+      this.ws.binaryType = "arraybuffer";
+
+      this.ws.onopen = async () => {
+        opts.onStatus("Connected. Starting Mic...");
+        await this.setupAudio(opts);
+      };
+
+      this.ws.onmessage = (evt) => {
+        this.handleMessage(evt, opts);
+      };
+
+      this.ws.onerror = (e) => {
+        console.error("WS Error:", e);
+        opts.onError("WebSocket Connection Error");
+      };
+
+      this.ws.onclose = (e) => {
+        if (this.started) {
+           opts.onStatus(`Connection Closed (Code: ${e.code})`);
+        }
+        this.stop();
+      };
+
+    } catch (err: any) {
+      this.started = false;
+      opts.onError(err.message || "Failed to start");
     }
   }
 
-  async function safeJson(res: Response) {
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`HTTP ${res.status}: ${txt.slice(0, 200)}`);
+  private async setupAudio(opts: StartOptions) {
+    try {
+      // Standard High Quality Audio Constraints
+      this.stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        } 
+      });
+      
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioCtx = new AudioContextClass();
+      await this.audioCtx.resume();
+
+      // ⚠️ GOLDEN RATIO CONFIGURATION
+      // Enhanced Accuracy + Instant Partials + Stable Connection
+      const startMsg = {
+        message: "StartRecognition",
+        audio_format: {
+          type: "raw",
+          encoding: "pcm_f32le",
+          sample_rate: this.audioCtx.sampleRate,
+        },
+        transcription_config: {
+          language: "en",
+          operating_point: "enhanced", // ✅ MAX ACCURACY
+          enable_partials: true,       // ✅ INSTANT SPEED (This makes it feel fast)
+          max_delay: 2,                // ✅ STABILITY (Prevents 'Connection Closed')
+          enable_entities: true,       // ✅ Formats numbers/dates
+        },
+      };
+
+      this.ws?.send(JSON.stringify(startMsg));
+
+      const source = this.audioCtx.createMediaStreamSource(this.stream);
+      // 4096 is the most stable buffer size for browser microphones
+      this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
+
+      source.connect(this.processor);
+      this.processor.connect(this.audioCtx.destination);
+
+      this.processor.onaudioprocess = (e) => {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        const input = e.inputBuffer.getChannelData(0);
+        this.ws.send(input.buffer);
+      };
+
+      opts.onStatus("Listening...");
+
+    } catch (err) {
+      opts.onError("Microphone Denied");
+      this.stop();
     }
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("application/json")) return await res.json();
-    const txt = await res.text();
-    throw new Error(`Non-JSON: ${txt.slice(0, 200)}`);
   }
 
-  async function getJwt() {
-    const r = await fetch(API_TOKEN, { method: "GET" });
-    const j = await safeJson(r);
-
-    const jwt = j.jwt || j.token;
-    if (!jwt) throw new Error("No token returned from /api/stt/tokens");
-    return jwt as string;
-  }
-
-  function cleanup() {
+  private handleMessage(evt: MessageEvent, opts: StartOptions) {
     try {
-      processor?.disconnect();
-      source?.disconnect();
-    } catch {}
+      const msg = JSON.parse(evt.data);
+      
+      if (msg.message === "AudioAdded") return;
 
-    try {
-      ctx?.close();
-    } catch {}
-
-    try {
-      stream?.getTracks()?.forEach((t) => t.stop());
-    } catch {}
-
-    try {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ message: "EndOfStream" }));
-        ws.close();
+      if (msg.message === "AddTranscript") {
+        if (msg.metadata?.transcript) {
+          opts.onFinal(msg.metadata.transcript);
+        }
+      } 
+      else if (msg.message === "AddPartialTranscript") {
+        if (msg.metadata?.transcript) {
+          opts.onPartial(msg.metadata.transcript);
+        }
       }
     } catch {}
-
-    ws = null;
-    stream = null;
-    ctx = null;
-    processor = null;
-    source = null;
-
-    running = false;
-    recognitionStarted = false;
   }
 
-  async function start(language = "en") {
-    if (running) return;
-
-    if (!window.isSecureContext) {
-      cb.onStatus?.("error", "Mic needs HTTPS (ngrok) or localhost.");
-      return;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      cb.onStatus?.("error", "Mic API not available.");
-      return;
-    }
-
-    manualStop = false;
-    running = true;
-    recognitionStarted = false;
-    finalText = "";
-    lastShown = "";
-
-    cb.onStatus?.("starting", "Starting...");
-    emitTranscript("Starting Speechmatics...");
-
-    try {
-      const jwt = await getJwt();
-
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // Force 16k sample rate for Speechmatics raw audio
-      ctx = new (window.AudioContext || (window as any).webkitAudioContext)({
-        sampleRate: 16000
-      });
-      await ctx.resume();
-
-      const sampleRate = ctx.sampleRate;
-
-      source = ctx.createMediaStreamSource(stream);
-      processor = ctx.createScriptProcessor(4096, 1, 1);
-
-      // mute output
-      const gain = ctx.createGain();
-      gain.gain.value = 0;
-
-      source.connect(processor);
-      processor.connect(gain);
-      gain.connect(ctx.destination);
-
-      // IMPORTANT: use US realtime endpoint (your portal shows us1)
-      const wsUrl = `wss://us.rt.speechmatics.com/v2?jwt=${encodeURIComponent(jwt)}`;
-      ws = new WebSocket(wsUrl);
-      ws.binaryType = "arraybuffer";
-
-      ws.onopen = () => {
-        ws?.send(
-          JSON.stringify({
-            message: "StartRecognition",
-            audio_format: {
-              type: "raw",
-              encoding: "pcm_f32le",
-              sample_rate: sampleRate
-            },
-            transcription_config: {
-              language: language.trim(),
-              enable_partials: true,
-              max_delay: 1.0
-            }
-          })
-        );
-      };
-
-      ws.onmessage = (evt) => {
-        try {
-          const msg = JSON.parse(evt.data as string);
-
-          if (msg.message === "RecognitionStarted") {
-            recognitionStarted = true;
-            cb.onStatus?.("listening", "Listening...");
-            emitTranscript("Listening...");
-            return;
-          }
-
-          if (msg.message === "AddTranscript") {
-            const text = normalize(
-              (msg.results || [])
-                .map((r: any) => r?.alternatives?.[0]?.content || "")
-                .join("")
-            );
-
-            const isFinal =
-              msg?.metadata?.transcript_type === "final" ||
-              msg?.metadata?.is_final === true;
-
-            if (text) {
-              if (isFinal) {
-                finalText = normalize(finalText + " " + text);
-                emitTranscript(finalText);
-              } else {
-                emitTranscript(normalize(finalText + " " + text));
-              }
-            }
-            return;
-          }
-
-          if (msg.message === "Error") {
-            cb.onStatus?.("error", `Speechmatics error: ${msg?.reason || "unknown"}`);
-            stop(true);
-            return;
-          }
-        } catch {
-          // ignore
-        }
-      };
-
-      ws.onerror = () => {
-        cb.onStatus?.("error", "WebSocket error.");
-        stop(true);
-      };
-
-      ws.onclose = () => {
-        if (!manualStop) cb.onStatus?.("idle", "Closed.");
-      };
-
-      processor.onaudioprocess = (e) => {
-        if (!running) return;
-        if (!recognitionStarted) return;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-        const input = e.inputBuffer.getChannelData(0);
-        ws.send(input.buffer);
-      };
-    } catch (e: any) {
-      cb.onStatus?.("error", e?.message || "Start failed");
-      cleanup();
-    }
+  stop() {
+    this.started = false;
+    this.processor?.disconnect();
+    this.audioCtx?.close();
+    this.stream?.getTracks().forEach((t) => t.stop());
+    this.ws?.close();
+    
+    this.processor = null;
+    this.audioCtx = null;
+    this.stream = null;
+    this.ws = null;
   }
-
-  function stop(userStop = true) {
-    manualStop = userStop;
-    cb.onStatus?.("stopped", "Stopped");
-    cleanup();
-  }
-
-  return { start, stop };
 }

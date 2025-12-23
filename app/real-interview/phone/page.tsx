@@ -1,8 +1,9 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 import PhoneInterviewClient from "./PhoneInterviewClient";
 
-export default function Page() {
-  return <PhoneInterviewClient />;
+export default function PhonePage() {
+  return (
+    <div className="min-h-screen bg-black">
+      <PhoneInterviewClient />
+    </div>
+  );
 }

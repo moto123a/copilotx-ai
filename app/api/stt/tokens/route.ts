@@ -1,64 +1,32 @@
-// app/api/stt/tokens/route.ts
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
-function json(data: any, status = 200) {
-  return new NextResponse(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store",
-    },
-  });
-}
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const apiKey = process.env.SPEECHMATICS_API_KEY;
 
     if (!apiKey) {
-      return json({ ok: false, error: "Missing SPEECHMATICS_API_KEY in .env.local" }, 500);
+      return NextResponse.json({ error: 'API key missing' }, { status: 500 });
     }
 
-    // IMPORTANT: long TTL so websocket does not drop quickly
-    const ttlSeconds = 3600;
-
-    const r = await fetch("https://mp.speechmatics.com/v1/api_keys?type=rt", {
-      method: "POST",
+    const response = await fetch('https://mp.speechmatics.com/v1/api_keys?type=rt', {
+      method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ ttl: ttlSeconds }),
+      body: JSON.stringify({ ttl: 60 }),
     });
 
-    const rawText = await r.text();
-    let j: any = null;
-    try {
-      j = JSON.parse(rawText);
-    } catch {
-      // keep rawText
+    if (!response.ok) {
+      return NextResponse.json({ error: 'Failed to fetch token' }, { status: 401 });
     }
 
-    if (!r.ok) {
-      return json(
-        {
-          ok: false,
-          error: "Speechmatics token request failed",
-          status: r.status,
-          raw: rawText,
-        },
-        500
-      );
-    }
+    const data = await response.json();
+    return NextResponse.json({ token: data.key_value });
 
-    const jwt = j?.key_value;
-    if (!jwt) {
-      return json({ ok: false, error: "No key_value returned", raw: j ?? rawText }, 500);
-    }
-
-    // Return both token and jwt for safety
-    return json({ ok: true, jwt, token: jwt, ttl: ttlSeconds });
-  } catch (e: any) {
-    return json({ ok: false, error: String(e?.message || e) }, 500);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
