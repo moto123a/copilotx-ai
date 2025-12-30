@@ -133,7 +133,14 @@ export default function Home() {
     };
   }, [x, y]);
 
-  const handleClick = (path: string) => router.push(`/${path}`);
+  const handleClick = (path: string) => {
+  // If user tries to go to 'real-interview' and is not logged in
+  if (path === "real-interview" && !user) {
+    setShowAuthModal(true); // Open the sign-in popup
+    return;
+  }
+  router.push(`/${path}`);
+};
 
   // --- DOWNLOAD HANDLER ---
   const handleDownload = (os: 'windows' | 'mac') => {

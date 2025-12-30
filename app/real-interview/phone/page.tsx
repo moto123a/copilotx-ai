@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SpeechmaticsClient } from "../laptop/stt-client";
 import { Mic, MicOff, ArrowLeft, FileText, Clipboard, Check, RefreshCw, Zap, Sparkles, BrainCircuit, ShieldAlert } from "lucide-react";
+import { auth } from "../../firebaseConfig";
 
 export default function MobilePhonePage() {
   const [view, setView] = useState<'setup' | 'interview'>('setup');
@@ -18,26 +19,24 @@ export default function MobilePhonePage() {
   const [partial, setPartial] = useState("");
   const [finalAnswer, setFinalAnswer] = useState(""); 
   
-  // Secret Cache
-  const hiddenDraftRef = useRef(""); 
+  // NEW: Tracker for Duration
+  const [startTime, setStartTime] = useState<number | null>(null);
   
+  const hiddenDraftRef = useRef(""); 
   const [copied, setCopied] = useState(false);
   const [thinkingStep, setThinkingStep] = useState(0);
 
-  // Refs
   const sttClient = useRef<any>(null);
   const transcriptRef = useRef(""); 
   const partialRef = useRef("");
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null); // For Eco-Mode
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // --- VISUALS ---
   useEffect(() => {
     if (!isRecording) return;
-    const interval = setInterval(() => {
-      setThinkingStep(prev => (prev + 1) % 4);
-    }, 1200);
+    const interval = setInterval(() => { setThinkingStep(prev => (prev + 1) % 4); }, 1200);
     return () => clearInterval(interval);
   }, [isRecording]);
 
@@ -64,40 +63,38 @@ export default function MobilePhonePage() {
     }
   };
 
-  // --- ECO-MODE FETCHING ENGINE ---
+  // --- UPDATED FETCH: Sending transcript and duration ---
   const performFetch = async () => {
     const fullText = (transcriptRef.current + " " + partialRef.current).trim();
     if (!fullText || fullText.length < 5) return;
 
+    // Calculate duration since start
+    const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+
     try {
-      // Show a mini visual indicator that we are fetching (optional, keeps UI clean)
       const response = await fetch("/api/stt/tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: fullText, resume: resume }),
+        body: JSON.stringify({ 
+          transcript: fullText, 
+          resume: resume,
+          userEmail: auth.currentUser?.email || "unknown",
+          duration: duration // Sending duration
+        }),
       });
       const data = await response.json();
-      if (data.answer) {
-        hiddenDraftRef.current = data.answer; // Update cache safely
-      }
+      if (data.answer) { hiddenDraftRef.current = data.answer; }
     } catch (err) { console.error("Fetch error", err); }
   };
 
-  // --- SMART DEBOUNCE (The Credit Saver) ---
   useEffect(() => {
     if (!isRecording) return;
-
-    // 1. Clear previous timer (Cancel the fetch if user keeps talking)
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-
-    // 2. Set new timer: Only fetch if user pauses for 2 seconds
-    // This dramatically reduces API calls compared to the previous version
     debounceTimerRef.current = setTimeout(() => {
        if (partialRef.current.length > 5 || transcriptRef.current.length > 5) {
          performFetch();
        }
-    }, 2000); // 2000ms delay = Safe for free tier
-
+    }, 2000); 
     return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); }
   }, [partial, transcript, isRecording]);
 
@@ -105,26 +102,26 @@ export default function MobilePhonePage() {
   // --- TOGGLE LOGIC ---
   const toggleRecording = useCallback(async () => {
     if (isRecording) {
-      // === STOP ===
       sttClient.current?.stop();
       setIsRecording(false);
       
-      // If we caught a pause and have a draft, show it INSTANTLY
-      if (hiddenDraftRef.current) {
-        setFinalAnswer(hiddenDraftRef.current);
-      } else {
-        // If no draft (user spoke fast without pausing), we must wait (unavoidable on free tier)
-        setFinalAnswer(""); 
-      }
+      const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
 
-      // Final Fetch (Required for accuracy)
+      if (hiddenDraftRef.current) { setFinalAnswer(hiddenDraftRef.current); } 
+      else { setFinalAnswer(""); }
+
       const fullText = (transcriptRef.current + " " + partialRef.current).trim();
       if (fullText) {
          try {
            const response = await fetch("/api/stt/tokens", {
              method: "POST",
              headers: { "Content-Type": "application/json" },
-             body: JSON.stringify({ transcript: fullText, resume: resume }),
+             body: JSON.stringify({ 
+               transcript: fullText, 
+               resume: resume,
+               userEmail: auth.currentUser?.email || "unknown",
+               duration: duration // Sending final duration
+             }),
            });
            const data = await response.json();
            setFinalAnswer(data.answer); 
@@ -132,8 +129,8 @@ export default function MobilePhonePage() {
       }
 
     } else {
-      // === START ===
       setIsRecording(true);
+      setStartTime(Date.now()); // Set start time
       setTranscript("");
       setPartial("");
       setFinalAnswer(""); 
@@ -145,23 +142,18 @@ export default function MobilePhonePage() {
       sttClient.current.start({
         language: "en",
         onStatus: () => {},
-        onPartial: (text: string) => {
-          setPartial(text);
-          partialRef.current = text;
-        },
+        onPartial: (text: string) => { setPartial(text); partialRef.current = text; },
         onFinal: (text: string) => { 
           const newTotal = (transcriptRef.current + " " + text).trim();
           setTranscript(newTotal); 
           transcriptRef.current = newTotal;
           setPartial(""); 
           partialRef.current = "";
-          // Note: We removed the aggressive "onFinal" fetch here to save credits
-          // It now relies on the 2s debounce or the Stop button
         },
         onError: () => setIsRecording(false),
       });
     }
-  }, [isRecording, resume]);
+  }, [isRecording, resume, startTime]);
 
   const copyAnswer = () => {
     navigator.clipboard.writeText(finalAnswer);
@@ -261,7 +253,6 @@ export default function MobilePhonePage() {
                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 pt-2">
                   <div className="min-h-full font-medium leading-relaxed text-lg">
                     {isRecording ? (
-                       // VISUALIZER (Hidden Answer)
                        <div className="flex flex-col items-center justify-center h-full space-y-4">
                           <div className="relative w-16 h-16 flex items-center justify-center">
                              <motion.div animate={{ scale: [1, 1.5], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 2.5 }} className="absolute inset-0 bg-blue-500/20 rounded-full" />
@@ -278,7 +269,6 @@ export default function MobilePhonePage() {
                           </motion.div>
                        </div>
                     ) : (
-                      // REVEAL
                       <div className="text-white animate-in fade-in duration-200">
                          {finalAnswer || (
                            <div className="flex flex-col items-center justify-center h-full opacity-60 space-y-2">

@@ -4,8 +4,11 @@
 import Link from "next/link";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { ArrowLeft, Laptop, Mic, Sparkles, Zap } from "lucide-react";
-import React from "react";
-
+import React, { useEffect, useState } from "react"; // Added useEffect, useState
+import { useRouter } from "next/navigation"; // Added useRouter
+import { onAuthStateChanged } from "firebase/auth"; // Added for Firebase
+import { auth } from "../firebaseConfig"; // Added for Firebase
+import AuthModal from "../../components/AuthModal";
 // Enhanced Animated Starfield with Multiple Layers
 const Starfield = () => {
   return (
@@ -99,7 +102,7 @@ const MagneticButton = ({ children }) => {
 };
 
 // Ultra Advanced Choice Card with Particles
-const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color }) => {
+const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color, onAction }) => {
   const ref = React.useRef(null);
   const [isHovered, setIsHovered] = React.useState(false);
 
@@ -225,7 +228,8 @@ const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color })
           {description}
         </p>
 
-        <Link href={href} passHref className="block">
+        {/* Updated: Added onClick handling to check authentication */}
+        <div onClick={(e) => { e.preventDefault(); onAction(href); }} className="cursor-pointer">
           <MagneticButton>
             <motion.div
               className={`w-full text-center px-6 py-4 rounded-xl border font-bold text-white transition-all duration-300 relative overflow-hidden group ${
@@ -248,13 +252,34 @@ const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color })
               </span>
             </motion.div>
           </MagneticButton>
-        </Link>
+        </div>
       </div>
     </motion.div>
   );
 };
 
 export default function RealInterviewChooserPage() {
+  const router = useRouter(); // Initialize Router
+  const [user, setUser] = useState<any>(null); // State for User
+  const [showAuthModal, setShowAuthModal] = useState(false); // State for Login Modal
+
+  // Added Firebase Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, currentUser => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Added Secure Navigation function
+  const handleAction = (path: string) => {
+    if (!user) {
+      setShowAuthModal(true); // Show login popup if not signed in
+    } else {
+      router.push(path); // Go to page if signed in
+    }
+  };
+
   return (
     <>
       <style jsx global>{`
@@ -292,6 +317,9 @@ export default function RealInterviewChooserPage() {
 
       <div className="relative min-h-screen w-full overflow-hidden bg-gradient-to-b from-[#000005] via-[#0a0a1a] to-[#000005] text-slate-200 antialiased">
         <Starfield />
+        
+        {/* Added: Auth Modal is displayed when showAuthModal is true */}
+        {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
         
         {/* Multiple gradient overlays */}
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent"></div>
@@ -364,6 +392,7 @@ export default function RealInterviewChooserPage() {
                   description="Runs discreetly during video calls. Ideal for Zoom, Teams, and Google Meet interviews."
                   buttonText="Launch Screen Share"
                   color="blue"
+                  onAction={handleAction} // Pass secure check
                 />
               </motion.div>
 
@@ -381,6 +410,7 @@ export default function RealInterviewChooserPage() {
                   description="Listens via your microphone. Perfect for phone calls and in-person interviews."
                   buttonText="Launch Microphone"
                   color="purple"
+                  onAction={handleAction} // Pass secure check
                 />
               </motion.div>
             </motion.div>

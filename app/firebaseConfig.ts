@@ -1,7 +1,7 @@
-
 // app/firebaseConfig.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore"; // 1. Added this import
 
 const firebaseConfig = {
   apiKey: "AIzaSyAGGmuFpR0qkCHLI3q2cPv_o3cQlbIU8lE",
@@ -15,6 +15,7 @@ const firebaseConfig = {
 // ✅ Initialize app only once
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// ✅ Export both app and auth (for Navbar + AuthModal)
+// ✅ Initialize Services
 export const auth = getAuth(app);
+export const db = getFirestore(app); // 2. Added this line to initialize Firestore
 export { app };
