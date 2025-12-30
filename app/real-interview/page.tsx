@@ -3,12 +3,12 @@
 
 import Link from "next/link";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
-import { ArrowLeft, Laptop, Mic, Sparkles, Zap } from "lucide-react";
-import React, { useEffect, useState } from "react"; // Added useEffect, useState
-import { useRouter } from "next/navigation"; // Added useRouter
-import { onAuthStateChanged } from "firebase/auth"; // Added for Firebase
-import { auth } from "../firebaseConfig"; // Added for Firebase
-import AuthModal from "../../components/AuthModal";
+import { ArrowLeft, Laptop, Mic, Sparkles, Zap, Loader2 } from "lucide-react"; // Added Loader2
+import React, { useState, useEffect } from "react"; // Added useState, useEffect
+import { onAuthStateChanged } from "firebase/auth"; // Added for security
+import { auth } from "../firebaseConfig"; // Added for security
+import AuthModal from "../../components/AuthModal"; // Added for security
+
 // Enhanced Animated Starfield with Multiple Layers
 const Starfield = () => {
   return (
@@ -102,7 +102,7 @@ const MagneticButton = ({ children }) => {
 };
 
 // Ultra Advanced Choice Card with Particles
-const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color, onAction }) => {
+const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color }) => {
   const ref = React.useRef(null);
   const [isHovered, setIsHovered] = React.useState(false);
 
@@ -228,8 +228,7 @@ const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color, o
           {description}
         </p>
 
-        {/* Updated: Added onClick handling to check authentication */}
-        <div onClick={(e) => { e.preventDefault(); onAction(href); }} className="cursor-pointer">
+        <Link href={href} passHref className="block">
           <MagneticButton>
             <motion.div
               className={`w-full text-center px-6 py-4 rounded-xl border font-bold text-white transition-all duration-300 relative overflow-hidden group ${
@@ -252,33 +251,37 @@ const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color, o
               </span>
             </motion.div>
           </MagneticButton>
-        </div>
+        </Link>
       </div>
     </motion.div>
   );
 };
 
 export default function RealInterviewChooserPage() {
-  const router = useRouter(); // Initialize Router
-  const [user, setUser] = useState<any>(null); // State for User
-  const [showAuthModal, setShowAuthModal] = useState(false); // State for Login Modal
+  // --- NEW PROTECTION LOGIC ---
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // Added Firebase Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, currentUser => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      setAuthLoading(false);
+      if (!currentUser) {
+        setShowAuthModal(true); // Pop up if not logged in
+      }
     });
     return () => unsubscribe();
   }, []);
 
-  // Added Secure Navigation function
-  const handleAction = (path: string) => {
-    if (!user) {
-      setShowAuthModal(true); // Show login popup if not signed in
-    } else {
-      router.push(path); // Go to page if signed in
-    }
-  };
+  // Show a dark loader while checking if they are logged in
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#000005] flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -318,123 +321,128 @@ export default function RealInterviewChooserPage() {
       <div className="relative min-h-screen w-full overflow-hidden bg-gradient-to-b from-[#000005] via-[#0a0a1a] to-[#000005] text-slate-200 antialiased">
         <Starfield />
         
-        {/* Added: Auth Modal is displayed when showAuthModal is true */}
+        {/* Added: Show Auth Modal if user is not logged in */}
         {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
         
         {/* Multiple gradient overlays */}
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent"></div>
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-purple-900/20 via-transparent to-transparent"></div>
         
-        <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-4" style={{ perspective: "2000px" }}>
-          <div className="w-full max-w-6xl">
-            {/* Ultra Animated Header */}
-            <motion.div
-              initial={{ y: -50, opacity: 0, scale: 0.9 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 100, damping: 15, delay: 0.1 }}
-              className="text-center mb-8"
-            >
+        {/* Only show content if user exists */}
+        {!user ? (
+            <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-4">
+                 <p className="text-slate-500 font-mono">Redirecting to login...</p>
+            </div>
+        ) : (
+          <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-4" style={{ perspective: "2000px" }}>
+            <div className="w-full max-w-6xl">
+              {/* Ultra Animated Header */}
               <motion.div
-                animate={{ rotate: [0, 5, -5, 0] }}
-                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                className="inline-block mb-4"
+                initial={{ y: -50, opacity: 0, scale: 0.9 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                transition={{ type: "spring", stiffness: 100, damping: 15, delay: 0.1 }}
+                className="text-center mb-8"
               >
-                <Sparkles size={48} className="text-blue-400 mx-auto" />
-              </motion.div>
-              
-              <motion.h1
-                className="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-4"
-                animate={{ 
-                  backgroundPosition: ["0%", "100%"],
-                }}
-                transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
-                style={{
-                  backgroundImage: "linear-gradient(90deg, #fff, #60a5fa, #a78bfa, #fff)",
-                  backgroundSize: "200% auto",
-                  backgroundClip: "text",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                Copilot Mode Select
-              </motion.h1>
-
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="mx-auto max-w-2xl text-xl text-slate-300"
-              >
-                Choose the mode that best fits your interview scenario.
-              </motion.p>
-            </motion.div>
-
-            {/* Cards with Stagger Animation */}
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              variants={{
-                visible: { transition: { staggerChildren: 0.2, delayChildren: 0.3 } },
-              }}
-              className="grid grid-cols-1 gap-10 md:grid-cols-2 mb-16"
-            >
-              <motion.div
-                variants={{ 
-                  hidden: { y: 100, opacity: 0, rotateX: -20 }, 
-                  visible: { y: 0, opacity: 1, rotateX: 0 } 
-                }}
-                transition={{ type: "spring", stiffness: 80, damping: 15 }}
-              >
-                <ChoiceCard
-                  href="/real-interview/laptop"
-                  icon={Laptop}
-                  title="Screen Share Mode"
-                  description="Runs discreetly during video calls. Ideal for Zoom, Teams, and Google Meet interviews."
-                  buttonText="Launch Screen Share"
-                  color="blue"
-                  onAction={handleAction} // Pass secure check
-                />
-              </motion.div>
-
-              <motion.div
-                variants={{ 
-                  hidden: { y: 100, opacity: 0, rotateX: -20 }, 
-                  visible: { y: 0, opacity: 1, rotateX: 0 } 
-                }}
-                transition={{ type: "spring", stiffness: 80, damping: 15 }}
-              >
-                <ChoiceCard
-                  href="/real-interview/phone"
-                  icon={Mic}
-                  title="Microphone Mode"
-                  description="Listens via your microphone. Perfect for phone calls and in-person interviews."
-                  buttonText="Launch Microphone"
-                  color="purple"
-                  onAction={handleAction} // Pass secure check
-                />
-              </motion.div>
-            </motion.div>
-
-            {/* Animated Back Button */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.8 }}
-              className="text-center"
-            >
-              <Link href="/">
-                <motion.button
-                  whileHover={{ scale: 1.05, backgroundColor: "rgba(255, 255, 255, 0.1)" }}
-                  whileTap={{ scale: 0.95 }}
-                  className="inline-flex items-center gap-3 rounded-xl bg-white/5 px-8 py-4 text-base font-semibold text-slate-300 ring-1 ring-inset ring-white/20 transition-all backdrop-blur-sm"
+                <motion.div
+                  animate={{ rotate: [0, 5, -5, 0] }}
+                  transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                  className="inline-block mb-4"
                 >
-                  <ArrowLeft size={20} />
-                  <span>Back to Home</span>
-                </motion.button>
-              </Link>
-            </motion.div>
+                  <Sparkles size={48} className="text-blue-400 mx-auto" />
+                </motion.div>
+                
+                <motion.h1
+                  className="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-4"
+                  animate={{ 
+                    backgroundPosition: ["0%", "100%"],
+                  }}
+                  transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
+                  style={{
+                    backgroundImage: "linear-gradient(90deg, #fff, #60a5fa, #a78bfa, #fff)",
+                    backgroundSize: "200% auto",
+                    backgroundClip: "text",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                  }}
+                >
+                  Copilot Mode Select
+                </motion.h1>
+
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="mx-auto max-w-2xl text-xl text-slate-300"
+                >
+                  Choose the mode that best fits your interview scenario.
+                </motion.p>
+              </motion.div>
+
+              {/* Cards with Stagger Animation */}
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                variants={{
+                  visible: { transition: { staggerChildren: 0.2, delayChildren: 0.3 } },
+                }}
+                className="grid grid-cols-1 gap-10 md:grid-cols-2 mb-16"
+              >
+                <motion.div
+                  variants={{ 
+                    hidden: { y: 100, opacity: 0, rotateX: -20 }, 
+                    visible: { y: 0, opacity: 1, rotateX: 0 } 
+                  }}
+                  transition={{ type: "spring", stiffness: 80, damping: 15 }}
+                >
+                  <ChoiceCard
+                    href="/real-interview/laptop"
+                    icon={Laptop}
+                    title="Screen Share Mode"
+                    description="Runs discreetly during video calls. Ideal for Zoom, Teams, and Google Meet interviews."
+                    buttonText="Launch Screen Share"
+                    color="blue"
+                  />
+                </motion.div>
+
+                <motion.div
+                  variants={{ 
+                    hidden: { y: 100, opacity: 0, rotateX: -20 }, 
+                    visible: { y: 0, opacity: 1, rotateX: 0 } 
+                  }}
+                  transition={{ type: "spring", stiffness: 80, damping: 15 }}
+                >
+                  <ChoiceCard
+                    href="/real-interview/phone"
+                    icon={Mic}
+                    title="Microphone Mode"
+                    description="Listens via your microphone. Perfect for phone calls and in-person interviews."
+                    buttonText="Launch Microphone"
+                    color="purple"
+                  />
+                </motion.div>
+              </motion.div>
+
+              {/* Animated Back Button */}
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.8 }}
+                className="text-center"
+              >
+                <Link href="/">
+                  <motion.button
+                    whileHover={{ scale: 1.05, backgroundColor: "rgba(255, 255, 255, 0.1)" }}
+                    whileTap={{ scale: 0.95 }}
+                    className="inline-flex items-center gap-3 rounded-xl bg-white/5 px-8 py-4 text-base font-semibold text-slate-300 ring-1 ring-inset ring-white/20 transition-all backdrop-blur-sm"
+                  >
+                    <ArrowLeft size={20} />
+                    <span>Back to Home</span>
+                  </motion.button>
+                </Link>
+              </motion.div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </>
   );
