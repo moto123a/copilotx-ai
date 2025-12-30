@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-// 1. GET: Fetches Speechmatics Token (For Transcribing)
+// 1. GET: Fetches Speechmatics Token (Keep exactly as is)
 export async function GET() {
   try {
     const apiKey = process.env.SPEECHMATICS_API_KEY;
@@ -26,28 +26,29 @@ export async function GET() {
   }
 }
 
-// 2. POST: Generates AI Answer via OpenRouter (For Brain)
+// 2. POST: Generates AI Answer via Groq (Updated for Speed)
 export async function POST(req: Request) {
   try {
     const { transcript, resume } = await req.json();
-    const openRouterKey = process.env.OPENROUTER_API_KEY;
+    
+    // CHANGED: Using Groq API Key
+    const groqApiKey = process.env.GROQ_API_KEY;
 
-    if (!openRouterKey) {
-      console.error("API Error: OPENROUTER_API_KEY is missing in .env.local");
-      return NextResponse.json({ error: 'OpenRouter key missing' }, { status: 500 });
+    if (!groqApiKey) {
+      console.error("API Error: GROQ_API_KEY is missing in .env.local");
+      return NextResponse.json({ error: 'Groq key missing' }, { status: 500 });
     }
 
-    // Switched to Llama 3.3 70B Free - It is more reliable than Gemini Experimental
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // CHANGED: Fetching from Groq API directly
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${openRouterKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:3000",
-        "X-Title": "AI Interview Assistant",
+        "Authorization": `Bearer ${groqApiKey}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.3-70b-instruct:free",
+        // CHANGED: The Fastest Model
+        model: "llama-3.1-8b-instant", 
         messages: [
           {
             role: "system",
@@ -65,23 +66,22 @@ export async function POST(req: Request) {
             content: `TRANSCRIPT: ${transcript}`
           }
         ],
-        temperature: 0.5, // Lower temperature = more stable, professional answers
+        temperature: 0.6, // Slightly higher for more natural speech
+        max_tokens: 200, // Limit tokens for speed
       })
     });
 
     const data = await response.json();
 
-    // LOGGING: Check your VS Code terminal if it fails
     if (data.error) {
-      console.error("OpenRouter API Error:", data.error);
-      return NextResponse.json({ answer: `AI Error: ${data.error.message || 'Limit reached'}` });
+      console.error("Groq API Error:", data.error);
+      return NextResponse.json({ answer: `AI Error: ${data.error.message || 'Groq Error'}` });
     }
 
     const aiAnswer = data.choices?.[0]?.message?.content;
 
     if (!aiAnswer) {
-      console.log("OpenRouter returned empty response. Full Data:", JSON.stringify(data));
-      return NextResponse.json({ answer: "AI is currently busy. Please wait 3 seconds and press SPACE again." });
+      return NextResponse.json({ answer: "AI is thinking..." });
     }
 
     return NextResponse.json({ answer: aiAnswer });

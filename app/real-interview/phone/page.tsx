@@ -4,7 +4,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SpeechmaticsClient } from "../laptop/stt-client";
-import { Mic, MicOff, Bot, ArrowLeft, Loader2, Upload, FileText, Clipboard, Check, AlertCircle, X, RefreshCw } from "lucide-react";
+import { Mic, MicOff, ArrowLeft, FileText, Clipboard, Check, RefreshCw, Zap, Sparkles, BrainCircuit, ShieldAlert } from "lucide-react";
 
 export default function MobilePhonePage() {
   const [view, setView] = useState<'setup' | 'interview'>('setup');
@@ -12,496 +12,317 @@ export default function MobilePhonePage() {
   const [resumeSource, setResumeSource] = useState<'paste' | 'upload'>('paste');
   const [fileName, setFileName] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  
+  // Data States
   const [transcript, setTranscript] = useState("");
   const [partial, setPartial] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [autoGenerate, setAutoGenerate] = useState(true); // Default ON
+  const [finalAnswer, setFinalAnswer] = useState(""); 
   
-  const sttClient = useRef<any>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Secret Cache
+  const hiddenDraftRef = useRef(""); 
+  
+  const [copied, setCopied] = useState(false);
+  const [thinkingStep, setThinkingStep] = useState(0);
 
-  // Handle file upload with PDF and DOCX support
+  // Refs
+  const sttClient = useRef<any>(null);
+  const transcriptRef = useRef(""); 
+  const partialRef = useRef("");
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null); // For Eco-Mode
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // --- VISUALS ---
+  useEffect(() => {
+    if (!isRecording) return;
+    const interval = setInterval(() => {
+      setThinkingStep(prev => (prev + 1) % 4);
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [isRecording]);
+
+  const getThinkingText = () => {
+    switch(thinkingStep) {
+      case 0: return "Listening...";
+      case 1: return "Analyzing...";
+      case 2: return "Drafting...";
+      case 3: return "Ready...";
+      default: return "Processing...";
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setFileName(file.name);
     const reader = new FileReader();
-
     if (file.type === "text/plain") {
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        setResume(text);
-      };
+      reader.onload = (event) => setResume(event.target?.result as string);
       reader.readAsText(file);
-    } else if (file.type === "application/pdf") {
-      // For PDF files
-      reader.onload = async (event) => {
-        try {
-          const typedArray = new Uint8Array(event.target?.result as ArrayBuffer);
-          // In production, you'd use a PDF parsing library
-          // For now, we'll show instructions
-          setResume("PDF uploaded: " + file.name + "\n\nPlease paste the text content manually for best results.");
-        } catch (err) {
-          alert("Please copy your resume text and paste it manually.");
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.name.endsWith('.docx')) {
-      // For DOCX files
-      reader.onload = async (event) => {
-        try {
-          const arrayBuffer = event.target?.result as ArrayBuffer;
-          // In production, use mammoth.js or similar
-          setResume("Word document uploaded: " + file.name + "\n\nPlease paste the text content manually for best results.");
-        } catch (err) {
-          alert("Please copy your resume text and paste it manually.");
-        }
-      };
-      reader.readAsArrayBuffer(file);
+    } else {
+      setResume("File uploaded: " + file.name + "\n\n(Please paste text manually for best results)");
     }
   };
 
-  // Generate answer based on transcript and resume
-  const generateAnswer = async () => {
-    const fullText = (transcript + " " + partial).trim();
-    if (!fullText || isGenerating) return;
-    
-    setIsGenerating(true);
+  // --- ECO-MODE FETCHING ENGINE ---
+  const performFetch = async () => {
+    const fullText = (transcriptRef.current + " " + partialRef.current).trim();
+    if (!fullText || fullText.length < 5) return;
+
     try {
+      // Show a mini visual indicator that we are fetching (optional, keeps UI clean)
       const response = await fetch("/api/stt/tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          transcript: fullText, 
-          resume: resume 
-        }),
+        body: JSON.stringify({ transcript: fullText, resume: resume }),
       });
       const data = await response.json();
-      setAnswer(data.answer);
-    } catch (err) { 
-      setAnswer("Error generating answer. Please try again."); 
-    } finally { 
-      setIsGenerating(false); 
-    }
+      if (data.answer) {
+        hiddenDraftRef.current = data.answer; // Update cache safely
+      }
+    } catch (err) { console.error("Fetch error", err); }
   };
 
-  // Auto-generate when transcript changes (if enabled)
+  // --- SMART DEBOUNCE (The Credit Saver) ---
   useEffect(() => {
-    if (autoGenerate && transcript && !isGenerating && transcript.length > 20) {
-      const timer = setTimeout(() => {
-        generateAnswer();
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [transcript, autoGenerate]);
+    if (!isRecording) return;
 
-  // Toggle recording
-  const toggleRecording = useCallback(() => {
+    // 1. Clear previous timer (Cancel the fetch if user keeps talking)
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+
+    // 2. Set new timer: Only fetch if user pauses for 2 seconds
+    // This dramatically reduces API calls compared to the previous version
+    debounceTimerRef.current = setTimeout(() => {
+       if (partialRef.current.length > 5 || transcriptRef.current.length > 5) {
+         performFetch();
+       }
+    }, 2000); // 2000ms delay = Safe for free tier
+
+    return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); }
+  }, [partial, transcript, isRecording]);
+
+
+  // --- TOGGLE LOGIC ---
+  const toggleRecording = useCallback(async () => {
     if (isRecording) {
+      // === STOP ===
       sttClient.current?.stop();
       setIsRecording(false);
+      
+      // If we caught a pause and have a draft, show it INSTANTLY
+      if (hiddenDraftRef.current) {
+        setFinalAnswer(hiddenDraftRef.current);
+      } else {
+        // If no draft (user spoke fast without pausing), we must wait (unavoidable on free tier)
+        setFinalAnswer(""); 
+      }
+
+      // Final Fetch (Required for accuracy)
+      const fullText = (transcriptRef.current + " " + partialRef.current).trim();
+      if (fullText) {
+         try {
+           const response = await fetch("/api/stt/tokens", {
+             method: "POST",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({ transcript: fullText, resume: resume }),
+           });
+           const data = await response.json();
+           setFinalAnswer(data.answer); 
+         } catch(e) {}
+      }
+
     } else {
+      // === START ===
       setIsRecording(true);
       setTranscript("");
       setPartial("");
-      setAnswer("");
+      setFinalAnswer(""); 
+      hiddenDraftRef.current = ""; 
+      transcriptRef.current = "";
+      partialRef.current = "";
       
       sttClient.current = new SpeechmaticsClient();
       sttClient.current.start({
         language: "en",
         onStatus: () => {},
-        onPartial: (text) => setPartial(text),
-        onFinal: (text) => { 
-          setTranscript(p => (p + " " + text).trim()); 
+        onPartial: (text: string) => {
+          setPartial(text);
+          partialRef.current = text;
+        },
+        onFinal: (text: string) => { 
+          const newTotal = (transcriptRef.current + " " + text).trim();
+          setTranscript(newTotal); 
+          transcriptRef.current = newTotal;
           setPartial(""); 
+          partialRef.current = "";
+          // Note: We removed the aggressive "onFinal" fetch here to save credits
+          // It now relies on the 2s debounce or the Stop button
         },
         onError: () => setIsRecording(false),
       });
     }
-  }, [isRecording]);
+  }, [isRecording, resume]);
 
-  // Copy answer to clipboard
   const copyAnswer = () => {
-    navigator.clipboard.writeText(answer);
+    navigator.clipboard.writeText(finalAnswer);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Clear transcript and answer
-  const clearTranscript = () => {
-    setTranscript("");
-    setPartial("");
-    setAnswer("");
-  };
-
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 safe-area-inset">
+    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 safe-area-inset font-sans">
       <AnimatePresence mode="wait">
         {view === 'setup' ? (
-          // SETUP VIEW - Enhanced Professional Design
           <motion.div 
-            key="setup" 
-            initial={{ opacity: 0, y: 20 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -20 }}
+            key="setup" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
             className="min-h-screen p-5 pb-10"
           >
-            <div className="max-w-2xl mx-auto">
-              {/* Professional Header */}
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.1 }}
-                className="text-center mb-10 mt-8"
-              >
-                <motion.div 
-                  animate={{ 
-                    scale: [1, 1.05, 1],
-                  }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-xl shadow-blue-500/30"
-                >
+             <div className="max-w-2xl mx-auto">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center mb-10 mt-8">
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-xl shadow-blue-500/30">
                   <Mic size={36} className="text-white" />
-                </motion.div>
+                </div>
                 <h1 className="text-5xl font-extrabold mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
                   Interview Copilot
                 </h1>
-                <p className="text-slate-400 text-lg font-medium">
-                  AI-Powered Real-Time Interview Assistant
-                </p>
+                <p className="text-slate-400 text-lg font-medium">AI-Powered Real-Time Interview Assistant</p>
               </motion.div>
 
-              {/* Resume Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-gradient-to-br from-slate-900/80 to-slate-800/80 border border-slate-700/50 rounded-3xl p-6 mb-6 backdrop-blur-xl shadow-2xl"
-              >
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900/80 border border-slate-700/50 rounded-3xl p-6 mb-6 backdrop-blur-xl shadow-2xl">
                 <div className="flex items-center justify-between mb-5">
-                  <h2 className="text-xl font-bold flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
-                      <FileText size={20} className="text-blue-400" />
-                    </div>
-                    Resume / CV
-                  </h2>
+                  <h2 className="text-xl font-bold flex items-center gap-3"><FileText size={20} className="text-blue-400" /> Resume / CV</h2>
                   <div className="flex gap-2 bg-slate-800/50 p-1 rounded-xl">
-                    <button
-                      onClick={() => setResumeSource('paste')}
-                      className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                        resumeSource === 'paste' 
-                          ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg' 
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Paste
-                    </button>
-                    <button
-                      onClick={() => setResumeSource('upload')}
-                      className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                        resumeSource === 'upload' 
-                          ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg' 
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Upload
-                    </button>
+                    <button onClick={() => setResumeSource('paste')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${resumeSource === 'paste' ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white' : 'text-slate-400'}`}>Paste</button>
+                    <button onClick={() => setResumeSource('upload')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${resumeSource === 'upload' ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white' : 'text-slate-400'}`}>Upload</button>
                   </div>
                 </div>
-
                 {resumeSource === 'paste' ? (
                   <div className="relative">
-                    <textarea 
-                      value={resume} 
-                      onChange={(e) => setResume(e.target.value)} 
-                      placeholder="Paste your resume content here...&#10;&#10;Include your:&#10;• Work Experience&#10;• Skills & Technologies&#10;• Education & Certifications&#10;• Key Achievements"
-                      className="w-full min-h-[320px] bg-slate-900/50 border border-slate-700 rounded-2xl p-5 text-slate-100 placeholder:text-slate-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base leading-relaxed resize-none shadow-inner"
-                    />
-                    {resume && (
-                      <button
-                        onClick={() => setResume("")}
-                        className="absolute top-3 right-3 p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
+                    <textarea value={resume} onChange={(e) => setResume(e.target.value)} placeholder="Paste your resume content here..." className="w-full min-h-[320px] bg-slate-900/50 border border-slate-700 rounded-2xl p-5 text-slate-100 placeholder:text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none text-base resize-none" />
+                    {resume && <button onClick={() => setResume("")} className="absolute top-3 right-3 p-2 bg-red-500/10 text-red-400 rounded-lg"><Check size={16} /></button>}
                   </div>
                 ) : (
-                  <div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".txt,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    <motion.div 
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-slate-600 hover:border-blue-500 rounded-2xl p-10 text-center cursor-pointer transition-all bg-slate-900/30 hover:bg-slate-800/50"
-                    >
-                      <Upload size={56} className="mx-auto mb-4 text-slate-500" />
-                      <p className="text-slate-300 font-semibold mb-2 text-lg">
-                        Upload Your Resume
-                      </p>
-                      <p className="text-slate-500 text-sm mb-4">
-                        PDF, Word, or Text files supported
-                      </p>
-                      <div className="inline-flex px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-blue-500/20">
-                        Choose File
-                      </div>
-                    </motion.div>
-                    
-                    {resume && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mt-4 p-4 bg-green-500/10 border border-green-500/30 rounded-xl"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
-                              <Check size={20} className="text-green-400" />
-                            </div>
-                            <div>
-                              <p className="text-green-400 font-semibold text-sm">
-                                {fileName || "Resume Loaded"}
-                              </p>
-                              <p className="text-slate-500 text-xs">
-                                {resume.length} characters
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => { setResume(""); setFileName(""); }}
-                            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                          >
-                            <X size={18} className="text-slate-400" />
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </div>
-                )}
-
-                {resume && (
-                  <div className="mt-4 flex items-center gap-2 text-xs text-slate-500 bg-slate-800/50 p-3 rounded-xl">
-                    <AlertCircle size={14} className="text-blue-400" />
-                    <span>AI will use this to provide personalized interview responses</span>
-                  </div>
+                  <motion.div onClick={() => fileInputRef.current?.click()} whileTap={{ scale: 0.98 }} className="border-2 border-dashed border-slate-600 hover:border-blue-500 rounded-2xl p-10 text-center cursor-pointer bg-slate-900/30">
+                    <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+                    <ArrowLeft size={56} className="mx-auto mb-4 text-slate-500" />
+                    <p className="text-slate-300 font-semibold mb-2">Upload Your Resume</p>
+                  </motion.div>
                 )}
               </motion.div>
-
-              {/* Auto-Generate Feature */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-gradient-to-br from-slate-900/80 to-slate-800/80 border border-slate-700/50 rounded-3xl p-6 mb-6 backdrop-blur-xl shadow-2xl"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                      <Bot size={20} className="text-purple-400" />
-                      Auto-Generate Mode
-                    </h3>
-                    <p className="text-sm text-slate-400 leading-relaxed">
-                      Automatically generates answers when the interviewer finishes speaking
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setAutoGenerate(!autoGenerate)}
-                    className={`relative w-16 h-9 rounded-full transition-all shadow-lg ${
-                      autoGenerate ? 'bg-gradient-to-r from-blue-500 to-purple-500' : 'bg-slate-700'
-                    }`}
-                  >
-                    <motion.div
-                      animate={{ x: autoGenerate ? 28 : 2 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      className="w-7 h-7 bg-white rounded-full absolute top-1 shadow-lg"
-                    />
-                  </button>
-                </div>
-              </motion.div>
-
-              {/* Start Button */}
-              <motion.button 
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.4 }}
-                onClick={() => resume ? setView('interview') : null}
-                disabled={!resume}
-                whileTap={{ scale: 0.97 }}
-                className={`w-full py-6 rounded-2xl font-bold text-xl transition-all shadow-2xl ${
-                  resume 
-                    ? 'bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 hover:shadow-blue-500/50 text-white' 
-                    : 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                }`}
-              >
+              <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={() => resume ? setView('interview') : null} disabled={!resume} whileTap={{ scale: 0.97 }} className={`w-full py-6 rounded-2xl font-bold text-xl transition-all shadow-2xl ${resume ? 'bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 text-white' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}>
                 {resume ? '🚀 Start Interview Session' : '📋 Add Resume to Continue'}
               </motion.button>
-
-              <p className="text-center text-slate-500 text-xs mt-4">
-                Your data is processed locally and never stored
-              </p>
             </div>
           </motion.div>
         ) : (
-          // INTERVIEW VIEW - Streamlined & Professional
-          <motion.div 
-            key="interview" 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }}
-            className="flex flex-col h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050508]"
-          >
-            {/* Compact Header */}
-            <div className="flex justify-between items-center p-4 pt-6 bg-slate-900/50 backdrop-blur-xl border-b border-slate-800">
-              <button 
-                onClick={() => { 
-                  if (isRecording) {
-                    if (window.confirm("Stop recording and exit interview?")) {
-                      sttClient.current?.stop();
-                      setIsRecording(false); 
-                      setView('setup');
-                    }
-                  } else {
-                    setView('setup');
-                  }
-                }} 
-                className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"
-              >
-                <ArrowLeft size={20} />
-              </button>
-              
-              <motion.div 
-                animate={{ scale: isRecording ? [1, 1.05, 1] : 1 }}
-                transition={{ repeat: isRecording ? Infinity : 0, duration: 1.5 }}
-                className={`px-5 py-2.5 rounded-full font-bold text-sm shadow-lg ${
-                  isRecording 
-                    ? 'bg-gradient-to-r from-red-500 to-red-600 text-white' 
-                    : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                {isRecording ? '● LIVE' : 'READY'}
-              </motion.div>
-
-              <button
-                onClick={clearTranscript}
-                disabled={!transcript && !answer}
-                className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors disabled:opacity-30"
-              >
-                <RefreshCw size={20} />
-              </button>
+          <motion.div key="interview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050508]">
+            {/* Header */}
+            <div className="flex justify-between items-center p-4 pt-6 bg-slate-900/50 backdrop-blur-xl border-b border-slate-800 shrink-0">
+              <button onClick={() => setView('setup')} className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"><ArrowLeft size={20} /></button>
+              <div className={`px-5 py-2.5 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 ${isRecording ? 'bg-gradient-to-r from-red-500 to-red-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                {isRecording && <span className="w-2 h-2 bg-white rounded-full animate-pulse"/>}
+                {isRecording ? 'LIVE' : 'READY'}
+              </div>
+              <button onClick={() => {setTranscript(""); setFinalAnswer(""); hiddenDraftRef.current = "";}} className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl"><RefreshCw size={20} /></button>
             </div>
 
-            {/* Main Content Area */}
             <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
-              {/* Question/Transcript Display */}
-              <div className="flex-1 bg-gradient-to-br from-slate-900/60 to-slate-800/60 backdrop-blur-sm rounded-3xl p-6 border border-slate-700/50 overflow-y-auto min-h-0 shadow-xl">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
-                    <span className="text-xs text-blue-400 font-bold uppercase tracking-wider">
-                      Interview Question
-                    </span>
-                  </div>
-                  {transcript && (
-                    <span className="text-xs text-slate-500 bg-slate-800/50 px-3 py-1 rounded-full">
-                      {transcript.split(' ').filter(w => w).length} words
-                    </span>
-                  )}
+              {/* Question */}
+              <div className="h-[25%] bg-gradient-to-br from-slate-900/60 to-slate-800/60 backdrop-blur-sm rounded-3xl p-6 border border-slate-700/50 overflow-y-auto shadow-xl shrink-0">
+                <div className="flex items-center gap-2 mb-4 sticky top-0 bg-transparent">
+                  <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                  <span className="text-xs text-blue-400 font-bold uppercase tracking-wider">Interview Question</span>
                 </div>
                 <div className="text-lg leading-relaxed text-slate-100 font-medium">
-                  {transcript || <span className="text-slate-600 italic">Waiting to capture audio...</span>}
+                  {transcript || <span className="text-slate-600 italic">Waiting for audio...</span>}
                   {partial && <span className="text-blue-400 animate-pulse"> {partial}</span>}
                 </div>
               </div>
 
-              {/* AI Answer Display */}
-              <div className="flex-1 bg-gradient-to-br from-blue-900/20 to-purple-900/20 backdrop-blur-sm rounded-3xl p-6 border border-purple-500/30 overflow-y-auto min-h-0 relative shadow-xl">
-                <div className="flex items-center justify-between mb-4">
+              {/* ANSWER BOX */}
+              <div className={`flex-1 flex flex-col backdrop-blur-sm rounded-3xl border shadow-xl transition-colors duration-500 overflow-hidden ${isRecording ? 'bg-blue-900/10 border-blue-500/30' : 'bg-gradient-to-br from-blue-900/20 to-purple-900/20 border-purple-500/30'}`}>
+                
+                {/* Header */}
+                <div className="p-5 pb-2 flex items-center justify-between shrink-0 border-b border-white/5">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-purple-400"></div>
-                    <span className="text-xs text-purple-400 font-bold uppercase tracking-wider">
-                      Your Answer
+                    {isRecording ? <BrainCircuit size={14} className="animate-pulse text-blue-400" /> : <Sparkles size={14} className="text-purple-400"/>}
+                    <span className={`text-xs font-bold uppercase tracking-wider ${isRecording ? 'text-blue-400' : 'text-purple-400'}`}>
+                      {isRecording ? "AI Thinking Process" : "Suggested Answer"}
                     </span>
                   </div>
-                  {answer && !isGenerating && (
-                    <button
-                      onClick={copyAnswer}
-                      className="text-xs px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg flex items-center gap-2 transition-all font-semibold"
-                    >
-                      {copied ? (
-                        <>
-                          <Check size={14} />
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Clipboard size={14} />
-                          Copy
-                        </>
-                      )}
+                  {finalAnswer && !isRecording && (
+                    <button onClick={copyAnswer} className="text-xs px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-2 font-semibold backdrop-blur-md transition-all">
+                      {copied ? <Check size={14} /> : <Clipboard size={14} />} {copied ? 'Copied' : 'Copy'}
                     </button>
                   )}
                 </div>
                 
-                {isGenerating ? (
-                  <div className="flex flex-col items-center justify-center gap-4 py-8">
-                    <Loader2 className="animate-spin text-purple-400" size={32} />
-                    <span className="text-sm text-slate-400 font-medium">Generating personalized response...</span>
-                  </div>
-                ) : (
-                  <div className="text-lg text-white font-medium leading-relaxed">
-                    {answer || (
-                      <span className="text-slate-500 italic">
-                        {autoGenerate 
-                          ? "Auto-generate is enabled. Answer will appear after question."
-                          : "Tap 'Generate' button when ready for AI assistance."}
-                      </span>
+                {/* Content */}
+                <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 pt-2">
+                  <div className="min-h-full font-medium leading-relaxed text-lg">
+                    {isRecording ? (
+                       // VISUALIZER (Hidden Answer)
+                       <div className="flex flex-col items-center justify-center h-full space-y-4">
+                          <div className="relative w-16 h-16 flex items-center justify-center">
+                             <motion.div animate={{ scale: [1, 1.5], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 2.5 }} className="absolute inset-0 bg-blue-500/20 rounded-full" />
+                             <BrainCircuit size={32} className="text-blue-400 z-10" />
+                          </div>
+                          
+                          <motion.div 
+                             key={thinkingStep}
+                             initial={{ opacity: 0, y: 5 }}
+                             animate={{ opacity: 1, y: 0 }}
+                             className="text-blue-300 font-mono text-sm tracking-wide bg-blue-900/30 px-3 py-1 rounded-full border border-blue-500/20"
+                          >
+                             {getThinkingText()}
+                          </motion.div>
+                       </div>
+                    ) : (
+                      // REVEAL
+                      <div className="text-white animate-in fade-in duration-200">
+                         {finalAnswer || (
+                           <div className="flex flex-col items-center justify-center h-full opacity-60 space-y-2">
+                              <Sparkles className="animate-spin text-purple-400" size={24}/>
+                              <span className="text-purple-300 italic text-sm">Finishing generation...</span>
+                           </div>
+                         )}
+                      </div>
                     )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
-            {/* Large Control Buttons - Fixed at Bottom */}
-            <div className="p-4 bg-slate-900/50 backdrop-blur-xl border-t border-slate-800">
-              <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto">
-                <motion.button 
-                  whileTap={{ scale: 0.96 }}
-                  onClick={toggleRecording}
-                  className={`flex flex-col items-center justify-center rounded-2xl font-bold h-28 transition-all shadow-2xl ${
-                    isRecording 
-                      ? 'bg-gradient-to-br from-red-500 to-red-600 text-white shadow-red-500/40' 
-                      : 'bg-gradient-to-br from-slate-800 to-slate-700 text-slate-300 hover:from-slate-700 hover:to-slate-600'
-                  }`}
-                >
-                  {isRecording ? <MicOff size={36} strokeWidth={2.5} /> : <Mic size={36} strokeWidth={2.5} />}
-                  <span className="text-sm mt-3 font-bold tracking-wide">
-                    {isRecording ? 'STOP RECORDING' : 'START RECORDING'}
-                  </span>
-                </motion.button>
+            {/* BUTTON */}
+            <div className="p-4 bg-slate-900/50 backdrop-blur-xl border-t border-slate-800 shrink-0">
+              <motion.button 
+                whileTap={{ scale: 0.96 }}
+                onClick={toggleRecording}
+                className={`w-full rounded-2xl font-bold h-28 transition-all shadow-2xl flex flex-col items-center justify-center relative overflow-hidden ${
+                  isRecording 
+                    ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-red-500/40' 
+                    : 'bg-gradient-to-br from-blue-600 to-purple-600 shadow-blue-500/40'
+                }`}
+              >
+                {isRecording && (
+                  <motion.div animate={{ scale: [1, 1.3], opacity: [0.2, 0] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-white/20 rounded-2xl" />
+                )}
 
-                <motion.button 
-                  whileTap={{ scale: 0.96 }}
-                  onClick={generateAnswer}
-                  disabled={(!transcript && !partial) || isGenerating}
-                  className={`flex flex-col items-center justify-center rounded-2xl font-bold h-28 transition-all shadow-2xl ${
-                    (transcript || partial) && !isGenerating
-                      ? 'bg-gradient-to-br from-blue-600 via-purple-600 to-blue-600 text-white shadow-purple-500/40 hover:shadow-purple-500/60'
-                      : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
-                  }`}
-                >
-                  <Bot size={36} strokeWidth={2.5} />
-                  <span className="text-sm mt-3 font-bold tracking-wide">
-                    GENERATE ANSWER
-                  </span>
-                </motion.button>
-              </div>
+                {isRecording ? (
+                  <>
+                    <MicOff size={32} className="text-white mb-1 relative z-10" />
+                    <span className="text-sm font-bold tracking-wide text-white relative z-10">MUTE & REVEAL</span>
+                    <span className="text-[10px] text-red-100 mt-1 relative z-10 opacity-90 flex items-center gap-1 font-mono uppercase">
+                       <ShieldAlert size={10} fill="currentColor"/> Safe/Eco Mode
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Mic size={36} className="text-white mb-2" />
+                    <span className="text-sm font-bold tracking-wide text-white">TAP TO SPEAK</span>
+                  </>
+                )}
+              </motion.button>
             </div>
           </motion.div>
         )}
