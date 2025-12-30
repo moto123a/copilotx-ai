@@ -15,6 +15,7 @@
     "autoprefixer": "^10.4.21",
     "file-saver": "^2.0.5",
     "firebase": "^12.4.0",
+    "firebase-admin": "^13.6.0",
     "framer-motion": "^12.23.24",
     "html2pdf.js": "^0.12.1",
     "lucide-react": "^0.553.0",
