@@ -122,11 +122,17 @@ export default function AuthModal({ onClose }: AuthModalProps) {
               className="text-center mb-8"
             >
               <motion.div
-                className="inline-flex items-center justify-center w-16 h-16 mb-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-lg shadow-blue-500/50"
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              >
-                <span className="text-3xl font-bold text-white">C</span>
+              className="inline-flex items-center justify-center w-16 h-16 mb-4 rounded-2xl"
+              whileHover={{ scale: 1.1, rotate: 5 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+
+                {/* ONLY CHANGE: Replace C with your logo */}
+                <img
+                  src="/logo.jpeg"
+                  alt="CoopilotX Logo"
+                  className="w-15 h-15 object-cover rounded-xl"
+                />
               </motion.div>
               
               <h2 className="text-3xl font-bold mb-2">
