@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import AiRobot3D from "../../components/AiRobot3D";
 
+// Mock 3D Robot Component
+const AiRobot3D = ({ isSpeaking }: { isSpeaking: boolean }) => (
+  <div className={`text-6xl transition-transform ${isSpeaking ? 'scale-110' : 'scale-100'}`}>
+    🤖
+  </div>
+);
 
 // --- Types ---
 type Feedback = {
