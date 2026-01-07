@@ -38,6 +38,7 @@
   "devDependencies": {
     "@types/node": "24.9.1",
     "@types/react": "^18.2.79",
+    "baseline-browser-mapping": "^2.9.12",
     "typescript": "5.9.3"
   }
 }
