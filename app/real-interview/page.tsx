@@ -18,7 +18,7 @@ const Starfield = () => {
       <div id="stars2" className="absolute inset-0"></div>
       <div id="stars3" className="absolute inset-0"></div>
       <div id="stars4" className="absolute inset-0"></div>
-      
+
       {/* Animated gradient orbs */}
       <motion.div
         animate={{
@@ -149,45 +149,45 @@ const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color })
     >
       {/* Animated border glow */}
       <motion.div
-        className={`absolute inset-0 rounded-3xl opacity-0 ${color === 'blue' ? 'bg-blue-500/20' : 'bg-purple-500/20'} blur-xl`}
+        className={`absolute inset-0 rounded-3xl opacity-0 ${color === "blue" ? "bg-blue-500/20" : "bg-purple-500/20"} blur-xl`}
         animate={{ opacity: isHovered ? [0.3, 0.6, 0.3] : 0 }}
         transition={{ duration: 2, repeat: Infinity }}
       />
 
       {/* Floating particles */}
-      {isHovered && particles.map((particle) => (
-        <motion.div
-          key={particle.id}
-          className={`absolute rounded-full ${color === 'blue' ? 'bg-blue-400' : 'bg-purple-400'}`}
-          initial={{ x: `${particle.x}%`, y: `${particle.y}%`, opacity: 0 }}
-          animate={{
-            y: [null, `${particle.y - 50}%`],
-            opacity: [0, 0.8, 0],
-          }}
-          transition={{
-            duration: 3,
-            repeat: Infinity,
-            delay: particle.delay,
-            ease: "easeOut",
-          }}
-          style={{ width: particle.size, height: particle.size }}
-        />
-      ))}
+      {isHovered &&
+        particles.map((particle) => (
+          <motion.div
+            key={particle.id}
+            className={`absolute rounded-full ${color === "blue" ? "bg-blue-400" : "bg-purple-400"}`}
+            initial={{ x: `${particle.x}%`, y: `${particle.y}%`, opacity: 0 }}
+            animate={{
+              y: [null, `${particle.y - 50}%`],
+              opacity: [0, 0.8, 0],
+            }}
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              delay: particle.delay,
+              ease: "easeOut",
+            }}
+            style={{ width: particle.size, height: particle.size }}
+          />
+        ))}
 
       {/* Shimmer effect */}
       <motion.div
         className="absolute inset-0 rounded-3xl"
         style={{
-          background: `linear-gradient(135deg, transparent 0%, ${color === 'blue' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(168, 85, 247, 0.1)'} 50%, transparent 100%)`,
+          background: `linear-gradient(135deg, transparent 0%, ${
+            color === "blue" ? "rgba(59, 130, 246, 0.1)" : "rgba(168, 85, 247, 0.1)"
+          } 50%, transparent 100%)`,
         }}
         animate={{ x: isHovered ? ["0%", "100%"] : "0%" }}
         transition={{ duration: 1.5, ease: "easeInOut" }}
       />
 
-      <div
-        style={{ transform: "translateZ(75px)", transformStyle: "preserve-3d" }}
-        className="relative z-10 text-center"
-      >
+      <div style={{ transform: "translateZ(75px)", transformStyle: "preserve-3d" }} className="relative z-10 text-center">
         {/* Animated icon container */}
         <motion.div
           animate={{
@@ -196,22 +196,18 @@ const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color })
           }}
           transition={{ duration: 0.5 }}
           className={`mx-auto mb-6 inline-flex h-20 w-20 items-center justify-center rounded-2xl border-2 ${
-            color === 'blue' 
-              ? 'bg-blue-500/10 border-blue-400/30 text-blue-400' 
-              : 'bg-purple-500/10 border-purple-400/30 text-purple-400'
+            color === "blue"
+              ? "bg-blue-500/10 border-blue-400/30 text-blue-400"
+              : "bg-purple-500/10 border-purple-400/30 text-purple-400"
           } shadow-lg relative overflow-hidden`}
         >
           <motion.div
-            className={`absolute inset-0 ${color === 'blue' ? 'bg-blue-400/20' : 'bg-purple-400/20'}`}
+            className={`absolute inset-0 ${color === "blue" ? "bg-blue-400/20" : "bg-purple-400/20"}`}
             animate={{ scale: isHovered ? [1, 1.5] : 1, opacity: isHovered ? [0.5, 0] : 0 }}
             transition={{ duration: 1, repeat: Infinity }}
           />
           <Icon size={36} className="relative z-10" />
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-            className="absolute inset-0"
-          >
+          <motion.div animate={{ rotate: 360 }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }} className="absolute inset-0">
             <Sparkles size={16} className="absolute top-1 right-1 opacity-50" />
           </motion.div>
         </motion.div>
@@ -224,23 +220,21 @@ const ChoiceCard = ({ href, icon: Icon, title, description, buttonText, color })
           {title}
         </motion.h2>
 
-        <p className="text-slate-400 mb-10 max-w-xs mx-auto text-base leading-relaxed">
-          {description}
-        </p>
+        <p className="text-slate-400 mb-10 max-w-xs mx-auto text-base leading-relaxed">{description}</p>
 
         <Link href={href} passHref className="block">
           <MagneticButton>
             <motion.div
               className={`w-full text-center px-6 py-4 rounded-xl border font-bold text-white transition-all duration-300 relative overflow-hidden group ${
-                color === 'blue'
-                  ? 'border-blue-500/30 bg-gradient-to-r from-blue-600/20 to-blue-500/20 hover:from-blue-600/40 hover:to-blue-500/40'
-                  : 'border-purple-500/30 bg-gradient-to-r from-purple-600/20 to-purple-500/20 hover:from-purple-600/40 hover:to-purple-500/40'
+                color === "blue"
+                  ? "border-blue-500/30 bg-gradient-to-r from-blue-600/20 to-blue-500/20 hover:from-blue-600/40 hover:to-blue-500/40"
+                  : "border-purple-500/30 bg-gradient-to-r from-purple-600/20 to-purple-500/20 hover:from-purple-600/40 hover:to-purple-500/40"
               }`}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
               <motion.div
-                className={`absolute inset-0 ${color === 'blue' ? 'bg-blue-500/20' : 'bg-purple-500/20'}`}
+                className={`absolute inset-0 ${color === "blue" ? "bg-blue-500/20" : "bg-purple-500/20"}`}
                 initial={{ x: "-100%" }}
                 whileHover={{ x: "100%" }}
                 transition={{ duration: 0.5 }}
@@ -320,19 +314,19 @@ export default function RealInterviewChooserPage() {
 
       <div className="relative min-h-screen w-full overflow-hidden bg-gradient-to-b from-[#000005] via-[#0a0a1a] to-[#000005] text-slate-200 antialiased">
         <Starfield />
-        
+
         {/* Added: Show Auth Modal if user is not logged in */}
         {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
-        
+
         {/* Multiple gradient overlays */}
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent"></div>
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-purple-900/20 via-transparent to-transparent"></div>
-        
+
         {/* Only show content if user exists */}
         {!user ? (
-            <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-4">
-                 <p className="text-slate-500 font-mono">Redirecting to login...</p>
-            </div>
+          <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-4">
+            <p className="text-slate-500 font-mono">Redirecting to login...</p>
+          </div>
         ) : (
           <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-4" style={{ perspective: "2000px" }}>
             <div className="w-full max-w-6xl">
@@ -350,10 +344,10 @@ export default function RealInterviewChooserPage() {
                 >
                   <Sparkles size={48} className="text-blue-400 mx-auto" />
                 </motion.div>
-                
+
                 <motion.h1
                   className="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-4"
-                  animate={{ 
+                  animate={{
                     backgroundPosition: ["0%", "100%"],
                   }}
                   transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
@@ -388,35 +382,35 @@ export default function RealInterviewChooserPage() {
                 className="grid grid-cols-1 gap-10 md:grid-cols-2 mb-16"
               >
                 <motion.div
-                  variants={{ 
-                    hidden: { y: 100, opacity: 0, rotateX: -20 }, 
-                    visible: { y: 0, opacity: 1, rotateX: 0 } 
+                  variants={{
+                    hidden: { y: 100, opacity: 0, rotateX: -20 },
+                    visible: { y: 0, opacity: 1, rotateX: 0 },
                   }}
                   transition={{ type: "spring", stiffness: 80, damping: 15 }}
                 >
                   <ChoiceCard
                     href="/real-interview/laptop"
                     icon={Laptop}
-                    title="Screen Share Mode"
-                    description="Runs discreetly during video calls. Ideal for Zoom, Teams, and Google Meet interviews."
-                    buttonText="Launch Screen Share"
+                    title="Laptop Mode"
+                    description="Use this mode for computer-based interviews. Optimized for your laptop/desktop setup."
+                    buttonText="Open Laptop Mode"
                     color="blue"
                   />
                 </motion.div>
 
                 <motion.div
-                  variants={{ 
-                    hidden: { y: 100, opacity: 0, rotateX: -20 }, 
-                    visible: { y: 0, opacity: 1, rotateX: 0 } 
+                  variants={{
+                    hidden: { y: 100, opacity: 0, rotateX: -20 },
+                    visible: { y: 0, opacity: 1, rotateX: 0 },
                   }}
                   transition={{ type: "spring", stiffness: 80, damping: 15 }}
                 >
                   <ChoiceCard
                     href="/real-interview/phone"
                     icon={Mic}
-                    title="Microphone Mode"
-                    description="Listens via your microphone. Perfect for phone calls and in-person interviews."
-                    buttonText="Launch Microphone"
+                    title="Phone Mode"
+                    description="Use this mode for phone calls and microphone-based interviews. Listens through your mic."
+                    buttonText="Open Phone Mode"
                     color="purple"
                   />
                 </motion.div>
