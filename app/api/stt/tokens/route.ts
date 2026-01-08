@@ -77,7 +77,6 @@ function normalizeDashes(input: string) {
 function sanitizeText(text: string) {
   if (!text) return "";
   const normalized = normalizeDashes(text);
-  // keep only printable ascii + newline to avoid parser surprises & model issues
   return normalized.replace(/[^\x20-\x7E\n]/g, "").slice(0, 30000);
 }
 
@@ -236,7 +235,6 @@ function extractJobs(experienceText: string): Job[] {
     if (isHeader) {
       lastHeader = line;
 
-      // Inline dates on the header itself
       const parsedInline = parseDateRange(line);
       if (parsedInline) {
         const sIdx = monthIndex(parsedInline.sy, parsedInline.sm);
@@ -254,7 +252,6 @@ function extractJobs(experienceText: string): Job[] {
         continue;
       }
 
-      // Dates might be on next line
       const next = lines[i + 1] || "";
       const parsedNext = parseDateRange(next);
       if (parsedNext) {
@@ -273,7 +270,6 @@ function extractJobs(experienceText: string): Job[] {
       continue;
     }
 
-    // Support "Duration:" lines inside a job block
     if (/^duration\s*:/i.test(line) && lastHeader) {
       const parsed = parseDateRange(line);
       if (!parsed) continue;
@@ -346,10 +342,8 @@ function verifyResumeDeterministic(resumeRaw: string) {
   }
 
   const grossMonths = jobs.reduce((sum, j) => sum + j.months, 0);
-
   const intervals: Interval[] = jobs.map((j) => ({ startIdx: j.startIdx, endIdx: j.endIdx }));
   const merged = mergeIntervals(intervals);
-
   const netMonths = merged.reduce((sum, it) => sum + monthsInclusive(it.startIdx, it.endIdx), 0);
 
   const lines: string[] = [];
@@ -407,16 +401,14 @@ export async function GET(req: Request) {
 }
 
 // ============================================================================
-// 6) POST: GROQ (KEEP WORKING MODES) + VERIFY_RESUME (NEW DETERMINISTIC)
+// 6) POST
 // ============================================================================
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { transcript, resume, jd, userEmail, duration, mode, question, answer } = body;
 
-    // ------------------------------------------------------------------
-    // MODE A: VERIFY RESUME (DETERMINISTIC, NO GROQ)
-    // ------------------------------------------------------------------
+    // MODE A: VERIFY RESUME
     if (mode === "verify_resume") {
       const result = verifyResumeDeterministic(resume);
 
@@ -426,18 +418,15 @@ export async function POST(req: Request) {
         duration: duration || 0,
       });
 
-      // Keep response shape your UI expects: data.totalExperience
       return NextResponse.json({
         totalExperience: result.totalExperience,
         summary: result.summary,
       });
     }
 
-    // Everything below is your existing Groq logic (unchanged behavior)
     const groqApiKey = process.env.GROQ_API_KEY;
 
     if (!groqApiKey) {
-      // keep original-ish fallback
       return NextResponse.json({
         score: 0,
         strengths: [],
@@ -446,11 +435,14 @@ export async function POST(req: Request) {
       });
     }
 
-    // ------------------------------------------------------------------
-    // MODE B: FEEDBACK
-    // ------------------------------------------------------------------
-    if (mode === "generate_feedback") {
+    // ✅ NEW MODE: RESUME-BASED SCRIPT ONLY (FOR SHORT ANSWERS / COACHING)
+    // This does NOT disturb existing modes. It's additive.
+    if (mode === "generate_script") {
       const safeResume = sanitizeText(resume);
+      const safeJd = sanitizeText(jd);
+      const safeQ = sanitizeText(question);
+      const safeA = sanitizeText(answer);
+
       try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -458,10 +450,92 @@ export async function POST(req: Request) {
           body: JSON.stringify({
             model: "llama-3.1-8b-instant",
             messages: [
-              { role: "system", content: `Technical Interviewer. JSON: {score, strengths, improvements, betterAnswerExample, resume_proof}.` },
-              { role: "user", content: `RESUME: ${safeResume}\nQUESTION: ${question}\nANSWER: ${answer}` },
+              {
+                role: "system",
+                content:
+                  `Return STRICT JSON ONLY with this schema:\n` +
+                  `{"betterAnswerExample":"...","resume_proof":"..."}\n\n` +
+                  `Rules:\n` +
+                  `- betterAnswerExample MUST be a word-for-word answer script (6-10 sentences).\n` +
+                  `- First-person, confident, professional.\n` +
+                  `- Must use facts from resume when possible.\n` +
+                  `- If resume lacks detail, keep it plausible but avoid placeholders like X/Y/Z.\n` +
+                  `- resume_proof should quote or reference the exact resume line(s) used (short).\n`,
+              },
+              {
+                role: "user",
+                content:
+                  `RESUME:\n${safeResume}\n\n` +
+                  `JOB DESCRIPTION:\n${safeJd || "N/A"}\n\n` +
+                  `QUESTION:\n${safeQ}\n\n` +
+                  `CANDIDATE ANSWER (may be short):\n${safeA}\n\n` +
+                  `Generate a perfect word-for-word script now.`,
+              },
             ],
-            temperature: 0.1,
+            temperature: 0.2,
+            response_format: { type: "json_object" },
+            max_tokens: 500,
+          }),
+        });
+
+        const data = await response.json();
+        const out = JSON.parse(cleanJson(data.choices?.[0]?.message?.content || "{}"));
+
+        await logUsageAndIncrement(userEmail || "Unknown", "Groq-Script", {
+          mode: "generate_script",
+          transcript: safeQ,
+          duration: duration || 0,
+        });
+
+        return NextResponse.json({
+          betterAnswerExample: out?.betterAnswerExample || "",
+          resume_proof: out?.resume_proof || "",
+        });
+      } catch {
+        return NextResponse.json({
+          betterAnswerExample: "",
+          resume_proof: "",
+        });
+      }
+    }
+
+    // MODE B: FEEDBACK ✅ returns "exact script" to say
+    if (mode === "generate_feedback") {
+      const safeResume = sanitizeText(resume);
+      const safeJd = sanitizeText(jd);
+      const safeQ = sanitizeText(question);
+      const safeA = sanitizeText(answer);
+
+      try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${groqApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "llama-3.1-8b-instant",
+            messages: [
+              {
+                role: "system",
+                content:
+                  `You are a strict interview coach. Return STRICT JSON ONLY with this schema:\n` +
+                  `{"score":0-10,"strengths":[...],"improvements":[...],"betterAnswerExample":"...","resume_proof":"..."}\n\n` +
+                  `Rules:\n` +
+                  `- Score 0-10.\n` +
+                  `- improvements MUST be action steps with EXACT wording guidance.\n` +
+                  `- betterAnswerExample MUST be a word-for-word answer script (6-10 sentences), first-person, confident.\n` +
+                  `- If answer is weak/short, rewrite a perfect answer anyway.\n` +
+                  `- Use resume facts where possible.\n`,
+              },
+              {
+                role: "user",
+                content:
+                  `RESUME:\n${safeResume}\n\n` +
+                  `JOB DESCRIPTION:\n${safeJd || "N/A"}\n\n` +
+                  `QUESTION:\n${safeQ}\n\n` +
+                  `CANDIDATE ANSWER:\n${safeA}\n\n` +
+                  `Now give strict coaching JSON.`,
+              },
+            ],
+            temperature: 0.2,
             response_format: { type: "json_object" },
           }),
         });
@@ -469,15 +543,14 @@ export async function POST(req: Request) {
         const data = await response.json();
         return NextResponse.json(JSON.parse(cleanJson(data.choices?.[0]?.message?.content)));
       } catch {
-        return NextResponse.json({ score: 0 });
+        return NextResponse.json({ score: 0, strengths: [], improvements: ["Error"], betterAnswerExample: "N/A" });
       }
     }
 
-    // ------------------------------------------------------------------
     // MODE C: QUESTIONS
-    // ------------------------------------------------------------------
     if (mode === "generate_questions") {
       const safeResume = sanitizeText(resume);
+      const safeJd = sanitizeText(jd);
 
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -485,20 +558,36 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           model: "llama-3.1-8b-instant",
           messages: [
-            { role: "system", content: `Generate 5 questions. JSON ONLY.` },
-            { role: "user", content: `RESUME: ${safeResume}` },
+            {
+              role: "system",
+              content:
+                `You generate interview questions. Output STRICT JSON ONLY with this exact schema:\n` +
+                `{"questions":["q1","q2","q3","q4","q5"]}\n` +
+                `Rules:\n` +
+                `- Exactly 8 questions.\n` +
+                `- Strings only.\n` +
+                `- No numbering like "1)" inside strings.\n` +
+                `- Do NOT include "Tell me about yourself." (frontend forces it).\n`,
+            },
+            { role: "user", content: `RESUME:\n${safeResume}\n\nJOB DESCRIPTION:\n${safeJd || "N/A"}` },
           ],
           response_format: { type: "json_object" },
+          temperature: 0.2,
         }),
       });
 
       const data = await response.json();
-      return NextResponse.json(JSON.parse(cleanJson(data.choices?.[0]?.message?.content)));
+      const raw = data.choices?.[0]?.message?.content || "{}";
+      const parsed = JSON.parse(cleanJson(raw));
+
+      const questions = Array.isArray(parsed?.questions)
+        ? parsed.questions.map((x: any) => String(x || "").trim()).filter(Boolean)
+        : [];
+
+      return NextResponse.json({ questions });
     }
 
-    // ------------------------------------------------------------------
     // MODE D: REAL-TIME INTERVIEW (DEFAULT)
-    // ------------------------------------------------------------------
     await logUsageAndIncrement(userEmail, "Groq-RealTime", { transcript, duration });
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -527,7 +616,10 @@ RULES:
     const data = await response.json();
     let aiAns = data.choices?.[0]?.message?.content || "...";
     aiAns = aiAns
-      .replace(/^(Based on the resume|As the candidate|I see that|According to the|The resume mentions|Looking at your resume)/i, "")
+      .replace(
+        /^(Based on the resume|As the candidate|I see that|According to the|The resume mentions|Looking at your resume)/i,
+        ""
+      )
       .trim();
 
     return NextResponse.json({ answer: aiAns });
