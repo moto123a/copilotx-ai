@@ -2,7 +2,7 @@ name: Keep Render Awake
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/10 * * * *"  # every 10 minutes
   workflow_dispatch:
 
 jobs:
@@ -11,4 +11,4 @@ jobs:
     steps:
       - name: Ping Render health endpoint
         run: |
-          curl -fsS "https://https://copilotx-ai.onrender.com/api/healthz" >/dev/null
+          curl -fsS "https://copilotx-ai.onrender.com/api/healthz" >/dev/null
